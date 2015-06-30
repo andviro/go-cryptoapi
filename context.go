@@ -35,7 +35,7 @@ func EnumProviders() ([]CryptoProvider, error) {
 			provType C.DWORD
 		)
 		if C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) == 0 {
-			return res, GetErr("Error getting initial enumeration")
+			break
 		}
 		buf := C.malloc(C.size_t(slen))
 		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(buf), &slen) == 0 {
