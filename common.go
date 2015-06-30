@@ -1,6 +1,6 @@
-// Package cryptoapi provides mid-level cryptographic API based on CryptoAPI
+// Package csp provides mid-level cryptographic API based on CryptoAPI
 // 2.0 on Windows and CryptoPro CSP on Linux.
-package cryptoapi
+package csp
 
 /*
 #cgo linux CFLAGS: -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include/asn1data/
@@ -35,6 +35,21 @@ const (
 	ProvGost2001 ProvType = 75
 )
 
+type KeyPairId C.DWORD
+
+const (
+	AtKeyExchange KeyPairId = C.AT_KEYEXCHANGE
+	AtSignature   KeyPairId = C.AT_SIGNATURE
+)
+
+type KeyFlag C.DWORD
+
+const (
+	KeyArchivable          KeyFlag = C.CRYPT_ARCHIVABLE
+	KeyExportable          KeyFlag = C.CRYPT_EXPORTABLE
+	KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
+)
+
 func charPtr(s string) *C.CHAR {
 	if s != "" {
 		return (*C.CHAR)(unsafe.Pointer(C.CString(s)))
@@ -42,7 +57,15 @@ func charPtr(s string) *C.CHAR {
 	return nil
 }
 
+func bytePtr(s string) *C.BYTE {
+	return (*C.BYTE)(unsafe.Pointer(C.CString(s)))
+}
+
 func freePtr(s *C.CHAR) {
+	C.free(unsafe.Pointer(s))
+}
+
+func freeBytePtr(s *C.BYTE) {
 	C.free(unsafe.Pointer(s))
 }
 

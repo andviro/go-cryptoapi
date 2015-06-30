@@ -1,4 +1,4 @@
-package cryptoapi
+package csp
 
 //#include "common.h"
 import "C"
@@ -13,7 +13,7 @@ type Ctx struct {
 // creation of CSP Context.
 type CryptoProvider struct {
 	Name string
-	Type C.DWORD
+	Type ProvType
 }
 
 // EnumProviders returns slice of CryptoProvider structures, describing
@@ -37,7 +37,7 @@ func EnumProviders() ([]CryptoProvider, error) {
 			C.free(buf)
 			return res, getErr("Error during provider enumeration")
 		} else {
-			res = append(res, CryptoProvider{Name: C.GoString((*C.char)(buf)), Type: provType})
+			res = append(res, CryptoProvider{Name: C.GoString((*C.char)(buf)), Type: ProvType(provType)})
 			C.free(buf)
 		}
 		index++
@@ -66,6 +66,24 @@ func NewCtx(container, provider string, provType ProvType, flags CryptFlag) (*Ct
 func (ctx *Ctx) Close() error {
 	if C.CryptReleaseContext(ctx.hProv, 0) == 0 {
 		return getErr("Error releasing context")
+	}
+	return nil
+}
+
+// SetPassword changes PIN on key container acquired with NewCtx to pwd. Which
+// private/public key pair affected is determined by at parameter.
+func (ctx *Ctx) SetPassword(pwd string, at KeyPairId) error {
+	var pParam C.DWORD
+	pin := bytePtr(pwd)
+	defer freeBytePtr(pin)
+
+	if at == AtSignature {
+		pParam = C.PP_SIGNATURE_PIN
+	} else {
+		pParam = C.PP_KEYEXCHANGE_PIN
+	}
+	if C.CryptSetProvParam(ctx.hProv, pParam, pin, 0) == 0 {
+		return getErr("Error setting container password")
 	}
 	return nil
 }
