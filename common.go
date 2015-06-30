@@ -1,6 +1,12 @@
+// Package cryptoapi provides mid-level cryptographic API based on CryptoAPI
+// 2.0 on Windows and CryptoPro CSP on Linux.
 package cryptoapi
 
 /*
+#cgo linux CFLAGS: -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include/asn1data/
+#cgo linux,amd64 LDFLAGS: -L/opt/cprocsp/lib/amd64/ -lcapi10 -lcapi20 -lasn1data -lssp
+#cgo linux,386 LDFLAGS: -L/opt/cprocsp/lib/ia32/ -lcapi10 -lcapi20 -lasn1data -lssp
+#cgo windows LDFLAGS: -lcrypt32 -lpthread
 #include "common.h"
 */
 import "C"
@@ -11,31 +17,35 @@ import (
 	"unsafe"
 )
 
-const (
-	CryptVerifyContext = C.CRYPT_VERIFYCONTEXT
-	CryptNewKeyset     = C.CRYPT_NEWKEYSET
-	CryptMachineKeyset = C.CRYPT_MACHINE_KEYSET
-	CryptDeleteKeyset  = C.CRYPT_DELETEKEYSET
-	CryptSilent        = C.CRYPT_SILENT
-)
+type CryptFlag C.DWORD
 
 const (
-	ProvRsa      = C.PROV_RSA_FULL
-	ProvGost94   = 71
-	ProvGost2001 = 75
+	CryptVerifyContext CryptFlag = C.CRYPT_VERIFYCONTEXT
+	CryptNewKeyset     CryptFlag = C.CRYPT_NEWKEYSET
+	CryptMachineKeyset CryptFlag = C.CRYPT_MACHINE_KEYSET
+	CryptDeleteKeyset  CryptFlag = C.CRYPT_DELETEKEYSET
+	CryptSilent        CryptFlag = C.CRYPT_SILENT
 )
 
-func CharPtr(s string) *C.CHAR {
+type ProvType C.DWORD
+
+const (
+	ProvRsa      ProvType = C.PROV_RSA_FULL
+	ProvGost94   ProvType = 71
+	ProvGost2001 ProvType = 75
+)
+
+func charPtr(s string) *C.CHAR {
 	if s != "" {
 		return (*C.CHAR)(unsafe.Pointer(C.CString(s)))
 	}
 	return nil
 }
 
-func FreePtr(s *C.CHAR) {
+func freePtr(s *C.CHAR) {
 	C.free(unsafe.Pointer(s))
 }
 
-func GetErr(msg string) error {
+func getErr(msg string) error {
 	return errors.New(fmt.Sprintf("%s: %x", msg, C.GetLastError()))
 }
