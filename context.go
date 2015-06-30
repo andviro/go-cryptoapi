@@ -10,31 +10,55 @@ package cryptoapi
 import "C"
 
 import (
-	"errors"
-	"fmt"
+	"unsafe"
 )
 
 type Ctx struct {
 	ctx C.HCRYPTPROV
 }
 
-func GetErr(msg string) error {
-	return errors.New(fmt.Sprintf("%s: %x", msg, C.GetLastError()))
+type CryptoProvider struct {
+	Name string
+	Type C.DWORD
 }
 
-func NewCtx() (*Ctx, error) {
-	var hprov C.HCRYPTPROV
+func EnumProviders() ([]CryptoProvider, error) {
+	var (
+		slen C.DWORD
+	)
 
-	if C.CryptAcquireContext(&hprov, nil, nil, 75, C.CRYPT_VERIFYCONTEXT) == 0 {
+	res := make([]CryptoProvider, 0)
+	index := C.DWORD(0)
+
+	for {
+		var (
+			provType C.DWORD
+		)
+		if C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) == 0 {
+			return res, GetErr("Error getting initial enumeration")
+		}
+		buf := C.malloc(C.size_t(slen))
+		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(buf), &slen) == 0 {
+			C.free(unsafe.Pointer(buf))
+			return res, GetErr("Error during provider enumeration")
+		} else {
+			res = append(res, CryptoProvider{Name: C.GoString((*C.char)(buf)), Type: provType})
+			C.free(unsafe.Pointer(buf))
+		}
+		index++
+	}
+	return res, nil
+}
+
+func NewCtx(container, provider string, provType, flags C.DWORD) (*Ctx, error) {
+	var hprov C.HCRYPTPROV
+	cContainer := CharPtr(container)
+	cProvider := CharPtr(provider)
+	defer FreePtr(cContainer)
+	defer FreePtr(cProvider)
+
+	if C.CryptAcquireContext(&hprov, cContainer, cProvider, provType, flags) == 0 {
 		return nil, GetErr("Error acquiring context")
 	}
 	return &Ctx{ctx: hprov}, nil
-}
-
-func main() {
-	x, err := NewCtx()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(x)
 }
