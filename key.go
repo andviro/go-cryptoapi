@@ -27,6 +27,7 @@ func (ctx *Ctx) GenKey(at KeyPairId, flags KeyFlag) (*Key, error) {
 	var hk C.HCRYPTKEY
 
 	if C.CryptGenKey(ctx.hProv, C.ALG_ID(at), C.DWORD(flags), &hk) == 0 {
+		// BUG: CryptGenKey raises error NTE_FAIL. Looking into it...
 		return nil, getErr("Error creating key for container")
 	}
 	return &Key{hKey: hk}, nil
