@@ -45,11 +45,11 @@ func EnumProviders() ([]CryptoProvider, error) {
 	return res, nil
 }
 
-// NewCtx creates new CSP context from container name, provider name,
+// AcquireCtx acquires new CSP context from container name, provider name,
 // type and flags. Empty strings for container and provider
 // names are typically used for CryptVerifyContext flag setting. Created context
 // must be eventually released with its Close method.
-func NewCtx(container, provider string, provType ProvType, flags CryptFlag) (*Ctx, error) {
+func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) (*Ctx, error) {
 	var hprov C.HCRYPTPROV
 	cContainer := charPtr(container)
 	cProvider := charPtr(provider)
@@ -62,6 +62,12 @@ func NewCtx(container, provider string, provType ProvType, flags CryptFlag) (*Ct
 	return &Ctx{hProv: hprov}, nil
 }
 
+//RemoveCtx deletes key container from CSP.
+func DeleteCtx(container, provider string, provType ProvType) error {
+	_, err := AcquireCtx(container, provider, provType, CryptDeleteKeyset)
+	return err
+}
+
 // Close releases CSP context
 func (ctx *Ctx) Close() error {
 	if C.CryptReleaseContext(ctx.hProv, 0) == 0 {
@@ -70,7 +76,7 @@ func (ctx *Ctx) Close() error {
 	return nil
 }
 
-// SetPassword changes PIN on key container acquired with NewCtx to pwd. Which
+// SetPassword changes PIN on key container acquired with AcquireCtx to pwd. Which
 // private/public key pair affected is determined by at parameter.
 func (ctx *Ctx) SetPassword(pwd string, at KeyPairId) error {
 	var pParam C.DWORD
