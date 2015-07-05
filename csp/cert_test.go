@@ -38,7 +38,7 @@ func getCert() *Cert {
 
 func TestNewCert(t *testing.T) {
 	crt := getCert()
-	assert.NotNil(t, crt.pcert)
+	assert.NotNil(t, crt.pCert)
 	assert.NoError(t, crt.Close())
 }
 
@@ -48,4 +48,16 @@ func TestCertProps(t *testing.T) {
 	assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", thumb)
 	subjectId, _ := crt.SubjectId()
 	assert.Equal(t, "b091df915184fc44d9f9b23faf7b15939ecbca09", subjectId)
+}
+
+func TestMemoryStore(t *testing.T) {
+	store, err := MemoryStore()
+	assert.NoError(t, err)
+	assert.NoError(t, store.Close())
+}
+
+func TestMyStore(t *testing.T) {
+	store, err := SystemStore("MY")
+	assert.NoError(t, err)
+	assert.NoError(t, store.Close())
 }

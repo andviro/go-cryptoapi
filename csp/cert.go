@@ -11,22 +11,22 @@ import (
 )
 
 type Cert struct {
-	pcert C.PCCERT_CONTEXT
+	pCert C.PCCERT_CONTEXT
 }
 
 // NewCert creates certificate context from io.Reader containing certificate
 // in X509 encoding
 func NewCert(r io.Reader) (*Cert, error) {
-	var pcert C.PCCERT_CONTEXT
+	var pCert C.PCCERT_CONTEXT
 	buf, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	pcert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(len(buf)))
-	if pcert == C.PCCERT_CONTEXT(nil) {
+	pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(len(buf)))
+	if pCert == C.PCCERT_CONTEXT(nil) {
 		return nil, getErr("Error creating certficate context")
 	}
-	return &Cert{pcert}, nil
+	return &Cert{pCert}, nil
 }
 
 // Close releases certificate context
@@ -34,7 +34,7 @@ func (c *Cert) Close() error {
 	if c == nil {
 		return nil
 	}
-	if C.CertFreeCertificateContext(c.pcert) == 0 {
+	if C.CertFreeCertificateContext(c.pCert) == 0 {
 		return getErr("Error releasing certificate context")
 	}
 	return nil
@@ -52,11 +52,11 @@ const (
 func (c *Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
 	var slen C.DWORD
 	var res []byte
-	if C.CertGetCertificateContextProperty(c.pcert, C.DWORD(propId), nil, &slen) == 0 {
+	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propId), nil, &slen) == 0 {
 		return res, getErr("Error getting cert context property size")
 	}
 	res = make([]byte, slen)
-	if C.CertGetCertificateContextProperty(c.pcert, C.DWORD(propId), unsafe.Pointer(&res[0]), &slen) == 0 {
+	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propId), unsafe.Pointer(&res[0]), &slen) == 0 {
 		return res, getErr("Error getting cert context property body")
 	}
 	return res, nil

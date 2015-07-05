@@ -48,3 +48,11 @@ func TestMain(m *testing.M) {
 	provType = x[0].Type
 	os.Exit(m.Run())
 }
+
+func TestCtxStore(t *testing.T) {
+	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
+	assert.NoError(t, err)
+	store, err := ctx.CertStore("MY")
+	assert.NoError(t, err)
+	assert.NoError(t, store.Close())
+}
