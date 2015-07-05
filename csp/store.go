@@ -159,3 +159,13 @@ func (s *CertStore) Add(cert *Cert) error {
 	}
 	return nil
 }
+
+func (s *CertStore) Certs() []*Cert {
+	var res []*Cert
+
+	for pCert := C.CertEnumCertificatesInStore(s.hStore, nil); pCert != nil; pCert = C.CertEnumCertificatesInStore(s.hStore, pCert) {
+		pCertDup := C.CertDuplicateCertificateContext(pCert)
+		res = append(res, &Cert{pCertDup})
+	}
+	return res
+}
