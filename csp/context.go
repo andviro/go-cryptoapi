@@ -3,6 +3,26 @@ package csp
 //#include "common.h"
 import "C"
 
+// CryptFlag determines behaviour of acquired context
+type CryptFlag C.DWORD
+
+const (
+	CryptVerifyContext CryptFlag = C.CRYPT_VERIFYCONTEXT
+	CryptNewKeyset     CryptFlag = C.CRYPT_NEWKEYSET
+	CryptMachineKeyset CryptFlag = C.CRYPT_MACHINE_KEYSET
+	CryptDeleteKeyset  CryptFlag = C.CRYPT_DELETEKEYSET
+	CryptSilent        CryptFlag = C.CRYPT_SILENT
+)
+
+// ProvType is CryptoAPI provider type
+type ProvType C.DWORD
+
+const (
+	ProvRsa      ProvType = C.PROV_RSA_FULL
+	ProvGost94   ProvType = 71
+	ProvGost2001 ProvType = 75
+)
+
 // Ctx is a CSP context nessessary for cryptographic
 // functions.
 type Ctx struct {

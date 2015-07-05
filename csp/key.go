@@ -3,6 +3,24 @@ package csp
 //#include "common.h"
 import "C"
 
+// KeyFlag sets options on created key pair
+type KeyFlag C.DWORD
+
+const (
+	KeyArchivable          KeyFlag = C.CRYPT_ARCHIVABLE
+	KeyExportable          KeyFlag = C.CRYPT_EXPORTABLE
+	KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
+)
+
+// KeyPairId selects public/private key pair from CSP container
+type KeyPairId C.DWORD
+
+const (
+	AtKeyExchange KeyPairId = C.AT_KEYEXCHANGE
+	AtSignature   KeyPairId = C.AT_SIGNATURE
+)
+
+// Key incapsulates key pair functions
 type Key struct {
 	hKey C.HCRYPTKEY
 }

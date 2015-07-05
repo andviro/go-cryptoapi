@@ -16,39 +16,6 @@ import (
 	"unsafe"
 )
 
-type CryptFlag C.DWORD
-
-const (
-	CryptVerifyContext CryptFlag = C.CRYPT_VERIFYCONTEXT
-	CryptNewKeyset     CryptFlag = C.CRYPT_NEWKEYSET
-	CryptMachineKeyset CryptFlag = C.CRYPT_MACHINE_KEYSET
-	CryptDeleteKeyset  CryptFlag = C.CRYPT_DELETEKEYSET
-	CryptSilent        CryptFlag = C.CRYPT_SILENT
-)
-
-type ProvType C.DWORD
-
-const (
-	ProvRsa      ProvType = C.PROV_RSA_FULL
-	ProvGost94   ProvType = 71
-	ProvGost2001 ProvType = 75
-)
-
-type KeyPairId C.DWORD
-
-const (
-	AtKeyExchange KeyPairId = C.AT_KEYEXCHANGE
-	AtSignature   KeyPairId = C.AT_SIGNATURE
-)
-
-type KeyFlag C.DWORD
-
-const (
-	KeyArchivable          KeyFlag = C.CRYPT_ARCHIVABLE
-	KeyExportable          KeyFlag = C.CRYPT_EXPORTABLE
-	KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
-)
-
 type ErrorCode C.DWORD
 
 // Some C error codes translated to Go constants
