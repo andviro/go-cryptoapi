@@ -13,6 +13,8 @@ type Cert struct {
 	pcert C.PCCERT_CONTEXT
 }
 
+// NewCert creates certificate context from io.Reader containing certificate
+// in X509 encoding
 func NewCert(r io.Reader) (*Cert, error) {
 	var pcert C.PCCERT_CONTEXT
 	buf, err := ioutil.ReadAll(r)
@@ -24,4 +26,15 @@ func NewCert(r io.Reader) (*Cert, error) {
 		return nil, getErr("Error creating certficate context")
 	}
 	return &Cert{pcert}, nil
+}
+
+// Close releases certificate context
+func (c *Cert) Close() error {
+	if c == nil {
+		return nil
+	}
+	if C.CertFreeCertificateContext(c.pcert) == 0 {
+		return getErr("Error releasing certificate context")
+	}
+	return nil
 }
