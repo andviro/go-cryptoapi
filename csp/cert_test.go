@@ -61,3 +61,35 @@ func TestMyStore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, store.Close())
 }
+
+func TestFind(t *testing.T) {
+	store, err := MemoryStore()
+	assert.NoError(t, err)
+	defer store.Close()
+
+	crt := getCert()
+	assert.NoError(t, store.Add(crt))
+
+	//crt2, err := store.GetByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
+	//assert.NoError(t, err)
+	//assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", crt2.MustThumbPrint())
+	//assert.NoError(t, crt2.Close())
+
+	//certsInStore := store.FindByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
+	//assert.Equal(t, 1, len(certsInStore))
+	//for _, c := range certsInStore {
+	//assert.NoError(t, c.Close())
+	//}
+
+	//certsInStore2 := store.FindBySubject("")
+	//assert.Equal(t, 1, len(certsInStore2))
+	//for _, c := range certsInStore2 {
+	//assert.NoError(t, c.Close())
+	//}
+
+	// BUG: FindBySubject followed by GetBySubject returns error
+	crt3, err := store.GetBySubject("")
+	assert.NoError(t, err)
+	assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
+	assert.NoError(t, crt3.Close())
+}

@@ -46,15 +46,7 @@ func charPtr(s string) *C.CHAR {
 	return nil
 }
 
-func bytePtr(s string) *C.BYTE {
-	return (*C.BYTE)(unsafe.Pointer(C.CString(s)))
-}
-
 func freePtr(s *C.CHAR) {
-	C.free(unsafe.Pointer(s))
-}
-
-func freeBytePtr(s *C.BYTE) {
 	C.free(unsafe.Pointer(s))
 }
 

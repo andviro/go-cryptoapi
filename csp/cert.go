@@ -62,14 +62,32 @@ func (c *Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
 	return res, nil
 }
 
-// ThumbPrint returs certificate's hash as a hexadecimal string
+// ThumbPrint returns certificate's hash as a hexadecimal string
 func (c *Cert) ThumbPrint() (string, error) {
 	thumb, err := c.GetProperty(CertHashProp)
 	return hex.EncodeToString(thumb), err
+}
+
+// MustThumbprint returns certificate's hash as a hexadecimal string or panics
+func (c *Cert) MustThumbPrint() string {
+	if thumb, err := c.ThumbPrint(); err != nil {
+		panic(err)
+	} else {
+		return thumb
+	}
 }
 
 // SubjectId returs certificate's subject public key Id as a hexadecimal string
 func (c *Cert) SubjectId() (string, error) {
 	thumb, err := c.GetProperty(CertKeyIdentifierProp)
 	return hex.EncodeToString(thumb), err
+}
+
+// MustSubjectId returns certificate's subject id or panics
+func (c *Cert) MustSubjectId() string {
+	if subj, err := c.SubjectId(); err != nil {
+		panic(err)
+	} else {
+		return subj
+	}
 }

@@ -103,15 +103,15 @@ func (ctx *Ctx) Close() error {
 // private/public key pair affected is determined by at parameter.
 func (ctx *Ctx) SetPassword(pwd string, at KeyPairId) error {
 	var pParam C.DWORD
-	pin := bytePtr(pwd)
-	defer freeBytePtr(pin)
+	pin := unsafe.Pointer(C.CString(pwd))
+	defer C.free(pin)
 
 	if at == AtSignature {
 		pParam = C.PP_SIGNATURE_PIN
 	} else {
 		pParam = C.PP_KEYEXCHANGE_PIN
 	}
-	if C.CryptSetProvParam(ctx.hProv, pParam, pin, 0) == 0 {
+	if C.CryptSetProvParam(ctx.hProv, pParam, (*C.BYTE)(pin), 0) == 0 {
 		return getErr("Error setting container password")
 	}
 	return nil
