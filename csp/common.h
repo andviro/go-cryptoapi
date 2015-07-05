@@ -11,4 +11,7 @@
 #   include <CSP_WinDef.h>
 #   include <CSP_WinCrypt.h>
 #endif
+
+#define MY_ENC_TYPE (X509_ASN_ENCODING | PKCS_7_ASN_ENCODING)
+
 #endif
