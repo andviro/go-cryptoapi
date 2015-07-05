@@ -3,6 +3,10 @@ package csp
 //#include "common.h"
 import "C"
 
+import (
+	"unsafe"
+)
+
 // CryptFlag determines behaviour of acquired context
 type CryptFlag C.DWORD
 
@@ -52,13 +56,12 @@ func EnumProviders() ([]CryptoProvider, error) {
 		if C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) == 0 {
 			break
 		}
-		buf := C.malloc(C.size_t(slen))
-		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(buf), &slen) == 0 {
-			C.free(buf)
+		buf := make([]byte, slen)
+		// XXX: Some evil magic here
+		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(unsafe.Pointer(&buf[0])), &slen) == 0 {
 			return res, getErr("Error during provider enumeration")
 		} else {
-			res = append(res, CryptoProvider{Name: C.GoString((*C.char)(buf)), Type: ProvType(provType)})
-			C.free(buf)
+			res = append(res, CryptoProvider{Name: string(buf), Type: ProvType(provType)})
 		}
 		index++
 	}
