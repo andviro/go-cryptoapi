@@ -3,9 +3,8 @@ package csp
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
+	//"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"testing"
 )
 
@@ -28,18 +27,25 @@ Fy/OfGEaF8zewD+iSsmob52ifRG7qYcN1rEsyfHpQ33oooB/I8s9Nil9WatEpZNC
 Sp4EAT/s6eUCx00m2uS2SJ83n7XHWr0hKxEtISL9tAA1fzwvT1eswO2IdKSBg47K
 `
 
-func TestNewCert(t *testing.T) {
+func getCert() *Cert {
 	certRdr := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(([]byte)(certData)))
 	crt, err := NewCert(certRdr)
-	assert.NoError(t, err)
+	if err != nil {
+		panic(err)
+	}
+	return crt
+}
+
+func TestNewCert(t *testing.T) {
+	crt := getCert()
 	assert.NotNil(t, crt.pcert)
 	assert.NoError(t, crt.Close())
 }
 
 func TestCertProps(t *testing.T) {
-	certRdr := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(([]byte)(certData)))
-	crt, err := NewCert(certRdr)
-	require.NoError(t, err)
-	fmt.Println(crt.SubjectId())
-	fmt.Println(crt.ThumbPrint())
+	crt := getCert()
+	thumb, _ := crt.ThumbPrint()
+	assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", thumb)
+	subjectId, _ := crt.SubjectId()
+	assert.Equal(t, "b091df915184fc44d9f9b23faf7b15939ecbca09", subjectId)
 }
