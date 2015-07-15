@@ -14,7 +14,7 @@ func main() {
 		panic(err)
 	}
 
-	ctx, err := csp.NewCtx("\\\\.\\HDIMAGE\\TestGoCryptoAPIContainer", provs[0].Name, provs[0].Type, csp.CryptNewKeyset)
+	ctx, err := csp.AcquireCtx("\\\\.\\HDIMAGE\\TestGoCryptoAPIContainer", provs[0].Name, provs[0].Type, csp.CryptNewKeyset)
 	if err != nil {
 		panic(err)
 	}
