@@ -11,7 +11,7 @@ import (
 )
 
 type Cert struct {
-	pCert C.PCCERT_CONTEXT
+	pCert *C.CERT_CONTEXT
 }
 
 // NewCert creates certificate context from io.Reader containing certificate
