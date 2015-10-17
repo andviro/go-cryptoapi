@@ -53,3 +53,7 @@ func freePtr(s *C.CHAR) {
 func getErr(msg string) error {
 	return &CspError{msg: msg, Code: ErrorCode(C.GetLastError())}
 }
+
+func extractBlob(pb *C.DATA_BLOB) []byte {
+	return C.GoBytes(unsafe.Pointer(pb.pbData), C.int(pb.cbData))
+}

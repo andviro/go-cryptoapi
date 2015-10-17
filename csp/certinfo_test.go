@@ -1,7 +1,7 @@
 package csp
 
 import (
-	//"fmt"
+	"fmt"
 	"gopkg.in/tylerb/is.v1"
 	"testing"
 )
@@ -13,13 +13,7 @@ func TestCertInfo(t *testing.T) {
 	info := crt.Info()
 	is.NotZero(info)
 
-	name, err := info.Subject()
-	is.NotErr(err)
-	is.NotZero(name)
-	info.MustSubject()
-
-	iss, err := info.Issuer()
-	is.NotErr(err)
-	is.NotZero(iss)
-	info.MustIssuer()
+	fmt.Println(info.SignatureAlgorithm())
+	fmt.Println(info.PublicKeyAlgorithm())
+	fmt.Println(len(info.PublicKeyBytes()))
 }

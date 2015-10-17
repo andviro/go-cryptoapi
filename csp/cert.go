@@ -91,3 +91,8 @@ func (c *Cert) MustSubjectId() string {
 		return subj
 	}
 }
+
+// Extract returns encoded certificate as byte slice
+func (c *Cert) Bytes() []byte {
+	return C.GoBytes(unsafe.Pointer(c.pCert.pbCertEncoded), C.int(c.pCert.cbCertEncoded))
+}
