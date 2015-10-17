@@ -1,7 +1,6 @@
 package csp
 
 import (
-	"bytes"
 	"encoding/base64"
 	"gopkg.in/tylerb/is.v1"
 	"testing"
@@ -27,8 +26,8 @@ Sp4EAT/s6eUCx00m2uS2SJ83n7XHWr0hKxEtISL9tAA1fzwvT1eswO2IdKSBg47K
 `
 
 func getCert() *Cert {
-	certRdr := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(([]byte)(certData)))
-	crt, err := NewCert(certRdr)
+	data, _ := base64.StdEncoding.DecodeString(certData)
+	crt, err := ParseCert(data)
 	if err != nil {
 		panic(err)
 	}

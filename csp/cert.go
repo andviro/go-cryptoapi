@@ -5,23 +5,18 @@ import "C"
 
 import (
 	"encoding/hex"
-	"io"
-	"io/ioutil"
 	"unsafe"
 )
 
+// Cert encapsulates certificate context
 type Cert struct {
 	pCert *C.CERT_CONTEXT
 }
 
-// NewCert creates certificate context from io.Reader containing certificate
-// in X509 encoding
-func NewCert(r io.Reader) (*Cert, error) {
+// ParseCert creates certificate context from byte slice
+func ParseCert(buf []byte) (*Cert, error) {
 	var pCert C.PCCERT_CONTEXT
-	buf, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
+
 	pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(len(buf)))
 	if pCert == C.PCCERT_CONTEXT(nil) {
 		return nil, getErr("Error creating certficate context")
