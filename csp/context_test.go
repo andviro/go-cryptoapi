@@ -3,8 +3,7 @@ package csp
 import (
 	//"fmt"
 	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"gopkg.in/tylerb/is.v1"
 	"os"
 	"testing"
 )
@@ -15,25 +14,31 @@ var (
 )
 
 func TestContextVerify(t *testing.T) {
+	is := is.New(t)
+
 	x, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	require.NoError(t, err)
-	assert.NotNil(t, x.hProv)
+	is.NotErr(err)
+	is.NotNil(x.hProv)
 	err = x.Close()
-	assert.NoError(t, err)
+	is.NotErr(err)
 
 }
 
 func TestEnumProviders(t *testing.T) {
+	is := is.New(t)
+
 	x, err := EnumProviders()
-	require.Nil(t, err, "Enumeration must pass")
-	assert.NotEmpty(t, x, "There must be at least 1 provider")
+	is.NotErr(err)
+	is.NotZero(x)
 }
 
 func TestErrorContext(t *testing.T) {
+	is := is.New(t)
+
 	err := DeleteCtx(Container("NotExistentContext"), provName, provType)
 	cerr, ok := err.(*CspError)
-	assert.True(t, ok)
-	assert.Equal(t, ErrKeysetNotDef, cerr.Code)
+	is.True(ok)
+	is.Equal(ErrKeysetNotDef, cerr.Code)
 }
 
 func TestMain(m *testing.M) {
@@ -50,9 +55,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestCtxStore(t *testing.T) {
+	is := is.New(t)
+
 	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	assert.NoError(t, err)
+	is.NotErr(err)
 	store, err := ctx.CertStore("MY")
-	assert.NoError(t, err)
-	assert.NoError(t, store.Close())
+	is.NotErr(err)
+	is.NotErr(store.Close())
 }

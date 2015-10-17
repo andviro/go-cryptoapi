@@ -1,25 +1,25 @@
 package csp
 
 import (
-	//"fmt"
-	//"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"gopkg.in/tylerb/is.v1"
 	"testing"
 )
 
 func TestKey(t *testing.T) {
+	is := is.New(t)
+
 	provs, err := EnumProviders()
-	require.NotEmpty(t, provs, "There must be at least 1 provider")
+	is.NotZero(provs)
 
 	ctx, err := AcquireCtx("TestGoCryptoAPIContainer", provs[0].Name, provs[0].Type, 0)
-	require.NoError(t, err, "Please create key container using 'createKeys' utility")
+	is.NotErr(err)
 	defer ctx.Close()
 
 	k1, err := ctx.Key(AtSignature)
-	require.Nil(t, err, "Must get AtSignature public key")
+	is.Nil(err)
 	defer k1.Close()
 
 	k2, err := ctx.Key(AtSignature)
-	require.Nil(t, err, "Must get AtSignature public key")
+	is.Nil(err)
 	defer k2.Close()
 }

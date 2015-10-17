@@ -3,8 +3,7 @@ package csp
 import (
 	"bytes"
 	"encoding/base64"
-	//"fmt"
-	"github.com/stretchr/testify/assert"
+	"gopkg.in/tylerb/is.v1"
 	"testing"
 )
 
@@ -37,71 +36,81 @@ func getCert() *Cert {
 }
 
 func TestNewCert(t *testing.T) {
+	is := is.New(t)
+
 	crt := getCert()
-	assert.NotNil(t, crt.pCert)
-	assert.NoError(t, crt.Close())
+	is.NotNil(crt.pCert)
+	is.NotErr(crt.Close())
 }
 
 func TestCertProps(t *testing.T) {
+	is := is.New(t)
+
 	crt := getCert()
 	thumb, _ := crt.ThumbPrint()
-	assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", thumb)
+	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", thumb)
 	subjectId, _ := crt.SubjectId()
-	assert.Equal(t, "b091df915184fc44d9f9b23faf7b15939ecbca09", subjectId)
+	is.Equal("b091df915184fc44d9f9b23faf7b15939ecbca09", subjectId)
 }
 
 func TestMemoryStore(t *testing.T) {
+	is := is.New(t)
+
 	store, err := MemoryStore()
-	assert.NoError(t, err)
-	assert.NoError(t, store.Close())
+	is.NotErr(err)
+	is.NotErr(store.Close())
 }
 
 func TestMyStore(t *testing.T) {
+	is := is.New(t)
+
 	store, err := SystemStore("MY")
-	assert.NoError(t, err)
-	assert.NoError(t, store.Close())
+	is.NotErr(err)
+	is.NotErr(store.Close())
 }
 
 func TestFind(t *testing.T) {
+	is := is.New(t)
+
 	store, err := MemoryStore()
-	assert.NoError(t, err)
+	is.NotErr(err)
 	defer store.Close()
 
 	crt := getCert()
-	assert.NoError(t, store.Add(crt))
+	is.NotErr(store.Add(crt))
 
 	crt2, err := store.GetByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
-	assert.NoError(t, err)
-	assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", crt2.MustThumbPrint())
-	assert.NoError(t, crt2.Close())
+	is.NotErr(err)
+	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt2.MustThumbPrint())
+	is.NotErr(crt2.Close())
 
 	certsInStore := store.FindByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
-	assert.Equal(t, 1, len(certsInStore))
+	is.Equal(1, len(certsInStore))
 	for _, c := range certsInStore {
-		assert.NoError(t, c.Close())
+		is.NotErr(c.Close())
 	}
 
 	certsInStore2 := store.Certs()
-	assert.Equal(t, 1, len(certsInStore2))
+	is.Equal(1, len(certsInStore2))
 	for _, c := range certsInStore2 {
-		assert.NoError(t, c.Close())
+		is.NotErr(c.Close())
 	}
 
 	certsInStore3 := store.FindBySubject("")
-	assert.Equal(t, 1, len(certsInStore3))
+	is.Equal(1, len(certsInStore3))
 	for _, c := range certsInStore3 {
-		assert.NoError(t, c.Close())
+		is.NotErr(c.Close())
 	}
 
 	certsInStore4 := store.Certs()
-	assert.Equal(t, 1, len(certsInStore4))
+	is.Equal(1, len(certsInStore4))
 	for _, c := range certsInStore4 {
-		assert.NoError(t, c.Close())
+		is.NotErr(c.Close())
 	}
 
 	// BUG: FindBySubject followed by GetBySubject returns error
 	//crt3, err := store.GetBySubject("")
-	//assert.NoError(t, err)
-	//assert.Equal(t, "4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
-	//assert.NoError(t, crt3.Close())
+	//is.NotErr(err)
+	//is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
+	//is.NotErr(crt3.Close())
 }
