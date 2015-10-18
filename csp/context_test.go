@@ -41,6 +41,16 @@ func TestErrorContext(t *testing.T) {
 	is.Equal(ErrKeysetNotDef, cerr.Code)
 }
 
+func TestCtxStore(t *testing.T) {
+	is := is.New(t)
+
+	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
+	is.NotErr(err)
+	store, err := ctx.CertStore("MY")
+	is.NotErr(err)
+	is.NotErr(store.Close())
+}
+
 func TestMain(m *testing.M) {
 	x, err := EnumProviders()
 	if err != nil {
@@ -52,14 +62,4 @@ func TestMain(m *testing.M) {
 	provName = x[0].Name
 	provType = x[0].Type
 	os.Exit(m.Run())
-}
-
-func TestCtxStore(t *testing.T) {
-	is := is.New(t)
-
-	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	is.NotErr(err)
-	store, err := ctx.CertStore("MY")
-	is.NotErr(err)
-	is.NotErr(store.Close())
 }
