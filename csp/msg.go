@@ -69,7 +69,7 @@ func (m *CmsDecoder) Decode(dest io.Writer, src io.Reader) (written int64, err e
 	m.dest = dest
 	p := make([]byte, 10*1024)
 	for {
-		n, err = m.src.Read(p)
+		n, err = src.Read(p)
 		if err != nil {
 			lastCall = 1
 		}
@@ -100,7 +100,7 @@ func (m *CmsDecoder) CertStore() (*CertStore, error) {
 	return &res, nil
 }
 
-// Verify checks message signature against signer certificate. Returns non-nil error if verification failed
+// Verify verifies message signature against signer certificate. Returns non-nil error if verification failed
 func (m *CmsDecoder) Verify(c *Cert) error {
 	if 0 == C.CryptMsgControl(m.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) {
 		return getErr("Error verifying message signature")
