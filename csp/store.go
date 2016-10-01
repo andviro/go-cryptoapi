@@ -119,7 +119,9 @@ func (s *CertStore) FindByThumb(thumb string) []*Cert {
 	}
 	var hashBlob C.CRYPT_HASH_BLOB
 	hashBlob.cbData = C.DWORD(len(bThumb))
-	hashBlob.pbData = (*C.BYTE)(unsafe.Pointer(&bThumb[0]))
+	bThumbPtr := C.CBytes(bThumb)
+	defer C.free(bThumbPtr)
+	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
 	return s.FindCerts(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob))
 }
 
@@ -131,7 +133,9 @@ func (s *CertStore) GetByThumb(thumb string) (*Cert, error) {
 	}
 	var hashBlob C.CRYPT_HASH_BLOB
 	hashBlob.cbData = C.DWORD(len(bThumb))
-	hashBlob.pbData = (*C.BYTE)(unsafe.Pointer(&bThumb[0]))
+	bThumbPtr := C.CBytes(bThumb)
+	defer C.free(bThumbPtr)
+	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
 	if crt := s.GetCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob)); crt == nil {
 		return nil, getErr("Error looking up certificate by thumb")
 	} else {
