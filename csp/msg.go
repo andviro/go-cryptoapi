@@ -18,8 +18,8 @@ const bufSize = 1 * 1024
 
 // CmsDecoder encapsulates stream decoder of PKCS7 message
 type CmsDecoder struct {
+	Ctx
 	hMsg      C.HCRYPTMSG
-	cProv     *Ctx
 	src       io.Reader
 	dest      io.Writer
 	lastError error
@@ -35,13 +35,13 @@ func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFi
 
 // NewCmsDecoder creates new CmsDecoder tied to cryptographic context. If
 // detachedSig parameter is specified, it must contain detached P7S signature
-func NewCmsDecoder(cProv *Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
+func NewCmsDecoder(ctx Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
 	var (
 		si           *C.CMSG_STREAM_INFO
 		stStreamInfo C.CMSG_STREAM_INFO
 		flags        C.DWORD
 	)
-	res := &CmsDecoder{cProv: cProv}
+	res := &CmsDecoder{Ctx: ctx}
 
 	if len(detachedSig) > 0 {
 		flags = C.CMSG_DETACHED_FLAG
@@ -57,7 +57,7 @@ func NewCmsDecoder(cProv *Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
 		C.MY_ENC_TYPE, // encoding type
 		flags,         // flags
 		0,             // message type (get from message)
-		cProv.hProv,   // cryptographic provider
+		ctx.hProv,     // cryptographic provider
 		nil,           // recipient information
 		si,
 	)

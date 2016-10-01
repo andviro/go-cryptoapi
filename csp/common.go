@@ -60,7 +60,9 @@ func charPtr(s string) *C.CHAR {
 }
 
 func freePtr(s *C.CHAR) {
-	C.free(unsafe.Pointer(s))
+	if s != nil {
+		C.free(unsafe.Pointer(s))
+	}
 }
 
 func getErr(msg string) error {

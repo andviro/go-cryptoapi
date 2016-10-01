@@ -42,47 +42,40 @@ type CryptoProvider struct {
 
 // EnumProviders returns slice of CryptoProvider structures, describing
 // available CSPs.
-func EnumProviders() ([]CryptoProvider, error) {
+func EnumProviders() (res []CryptoProvider, err error) {
 	var (
-		slen C.DWORD
+		slen, provType, index C.DWORD
 	)
 
-	res := make([]CryptoProvider, 0)
-	index := C.DWORD(0)
+	res = make([]CryptoProvider, 0)
 
-	for {
-		var provType C.DWORD
-
-		if C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) == 0 {
-			break
-		}
+	for index = 0; C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) != 0; index++ {
 		buf := make([]byte, slen)
 		// XXX: Some evil magic here
 		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(unsafe.Pointer(&buf[0])), &slen) == 0 {
-			return res, getErr("Error during provider enumeration")
-		} else {
-			res = append(res, CryptoProvider{Name: string(buf), Type: ProvType(provType)})
+			err = getErr("Error during provider enumeration")
+			return
 		}
-		index++
+		res = append(res, CryptoProvider{Name: string(buf), Type: ProvType(provType)})
 	}
-	return res, nil
+	return
 }
 
 // AcquireCtx acquires new CSP context from container name, provider name,
 // type and flags. Empty strings for container and provider
 // names are typically used for CryptVerifyContext flag setting. Created context
 // must be eventually released with its Close method.
-func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) (*Ctx, error) {
-	var hprov C.HCRYPTPROV
+func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) (res Ctx, err error) {
 	cContainer := charPtr(container)
-	cProvider := charPtr(provider)
 	defer freePtr(cContainer)
+	cProvider := charPtr(provider)
 	defer freePtr(cProvider)
 
-	if C.CryptAcquireContext(&hprov, cContainer, cProvider, C.DWORD(provType), C.DWORD(flags)) == 0 {
-		return nil, getErr("Error acquiring context")
+	if C.CryptAcquireContext(&res.hProv, cContainer, cProvider, C.DWORD(provType), C.DWORD(flags)) == 0 {
+		err = getErr("Error acquiring context")
+		return
 	}
-	return &Ctx{hProv: hprov}, nil
+	return
 }
 
 //RemoveCtx deletes key container from CSP.
@@ -92,7 +85,7 @@ func DeleteCtx(container, provider string, provType ProvType) error {
 }
 
 // Close releases CSP context
-func (ctx *Ctx) Close() error {
+func (ctx Ctx) Close() error {
 	if C.CryptReleaseContext(ctx.hProv, 0) == 0 {
 		return getErr("Error releasing context")
 	}
@@ -101,7 +94,7 @@ func (ctx *Ctx) Close() error {
 
 // SetPassword changes PIN on key container acquired with AcquireCtx to pwd. Which
 // private/public key pair affected is determined by at parameter.
-func (ctx *Ctx) SetPassword(pwd string, at KeyPairId) error {
+func (ctx Ctx) SetPassword(pwd string, at KeyPairId) error {
 	var pParam C.DWORD
 	pin := unsafe.Pointer(C.CString(pwd))
 	defer C.free(pin)
