@@ -157,7 +157,7 @@ func (s *CertStore) GetBySubject(subject string) (*Cert, error) {
 
 // Add inserts certificate into store replacing existing certificate link if
 // it's already added
-func (s *CertStore) Add(cert *Cert) error {
+func (s *CertStore) Add(cert Cert) error {
 	if C.CertAddCertificateContextToStore(s.hStore, cert.pCert, C.CERT_STORE_ADD_REPLACE_EXISTING, nil) == 0 {
 		return getErr("Couldn't add certificate to store")
 	}
