@@ -48,7 +48,7 @@ type CspError struct {
 	msg  string
 }
 
-func (e *CspError) Error() string {
+func (e CspError) Error() string {
 	return fmt.Sprintf("%s: %X", e.msg, e.Code)
 }
 
@@ -64,7 +64,7 @@ func freePtr(s *C.CHAR) {
 }
 
 func getErr(msg string) error {
-	return &CspError{msg: msg, Code: ErrorCode(C.GetLastError())}
+	return CspError{msg: msg, Code: ErrorCode(C.GetLastError())}
 }
 
 func extractBlob(pb *C.DATA_BLOB) []byte {
