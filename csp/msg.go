@@ -21,22 +21,28 @@ const bufSize = 1 * 1024
 // CmsDecoder encapsulates stream decoder of PKCS7 message
 type CmsDecoder struct {
 	hMsg      C.HCRYPTMSG
-	src       io.Reader
 	dest      io.Writer
+	written   int
 	lastError error
 }
 
 //export msgDecodeCallback
 func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	msg := (*CmsDecoder)(pvArg)
+	if msg.dest == nil {
+		return true
+	}
+
+	var n int
 	chunk := C.GoBytes(unsafe.Pointer(pbData), C.int(cbData))
-	_, msg.lastError = msg.dest.Write(chunk)
+	n, msg.lastError = msg.dest.Write(chunk)
+	msg.written += n
 	return msg.lastError == nil
 }
 
-// NewCmsDecoder creates new CmsDecoder tied to cryptographic context. If
-// detachedSig parameter is specified, it must contain detached P7S signature
-func NewCmsDecoder(src io.Reader, detachedSig ...[]byte) (res *CmsDecoder, err error) {
+// NewCmsDecoder creates new CmsDecoder. If detachedSig parameter is specified,
+// it must contain detached P7S signature
+func NewCmsDecoder(detachedSig ...[]byte) (res *CmsDecoder, err error) {
 	var (
 		flags C.DWORD
 		si    *C.CMSG_STREAM_INFO
@@ -50,8 +56,6 @@ func NewCmsDecoder(src io.Reader, detachedSig ...[]byte) (res *CmsDecoder, err e
 		si = C.mkStreamInfo(unsafe.Pointer(res))
 		defer C.free(unsafe.Pointer(si))
 	}
-	res.src = src // XXX
-
 	res.hMsg = C.CryptMsgOpenToDecode(
 		C.MY_ENC_TYPE, // encoding type
 		flags,         // flags
@@ -89,19 +93,21 @@ func (m CmsDecoder) update(buf []byte, n int, lastCall bool) bool {
 	return C.CryptMsgUpdate(m.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
-// Decode parses message input stream and writes decoded message body to `dest`
-func (m *CmsDecoder) Decode(dest io.Writer) (written int64, err error) {
+// Decode parses message input stream from `src` and writes decoded message body to `dest`.
+func (m *CmsDecoder) Decode(dest io.Writer, src io.Reader) (written int64, err error) {
 	var n int
+	m.written = 0
 	m.dest = dest
 	buf := make([]byte, bufSize)
 	for {
-		n, err = m.src.Read(buf)
-		if !m.update(buf, n, err == io.EOF) {
+		n, err = src.Read(buf)
+		ok := m.update(buf, n, err == io.EOF)
+		written = int64(m.written)
+
+		if !ok {
 			err = getErr("Error updating message body")
 			return
 		}
-		written += int64(n)
-
 		if err == io.EOF {
 			err = m.lastError
 			return
