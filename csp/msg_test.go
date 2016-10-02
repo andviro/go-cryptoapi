@@ -15,16 +15,13 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotErr(err)
 	defer f.Close()
 
-	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	is.NotErr(err)
-
-	msg, err := NewCmsDecoder(ctx)
+	msg, err := NewCmsDecoder(f)
 	is.NotErr(err)
 	o, err := os.Create("/tmp/logical.bin")
 	is.NotErr(err)
 	defer o.Close()
 
-	n, err := msg.Decode(o, f)
+	n, err := msg.Decode(o)
 	is.NotErr(err)
 	is.NotZero(n)
 
@@ -33,7 +30,7 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotZero(store)
 
 	for _, c := range store.Certs() {
-		is.Lax().NotErr(msg.Verify(c)) // XXX
+		is.Lax().NotErr(msg.Verify(c)) // XXX can not verify RSA on Linux
 	}
 	is.NotErr(msg.Close())
 }
@@ -41,16 +38,13 @@ func TestCmsDecoder(t *testing.T) {
 func TestCmsDetached(t *testing.T) {
 	is := is.New(t)
 
-	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	is.NotErr(err)
-
 	sig, err := ioutil.ReadFile("/tmp/data1.p7s")
 	is.NotErr(err)
 	data, err := os.Open("/tmp/data1.bin")
 	is.NotErr(err)
-	msg, err := NewCmsDecoder(ctx, sig)
+	msg, err := NewCmsDecoder(data, sig)
 	is.NotErr(err)
-	_, err = msg.Decode(nil, data)
+	_, err = msg.Decode(nil)
 	is.NotErr(err)
 
 	store, err := msg.CertStore()
