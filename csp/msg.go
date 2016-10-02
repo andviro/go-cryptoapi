@@ -74,14 +74,14 @@ func NewCmsDecoder(src io.Reader, detachedSig ...[]byte) (res *CmsDecoder, err e
 }
 
 // Close needs to be called to release internal message handle
-func (m *CmsDecoder) Close() error {
+func (m CmsDecoder) Close() error {
 	if C.CryptMsgClose(m.hMsg) == 0 {
 		return getErr("Error closing CMS decoder")
 	}
 	return nil
 }
 
-func (m *CmsDecoder) update(buf []byte, n int, lastCall bool) bool {
+func (m CmsDecoder) update(buf []byte, n int, lastCall bool) bool {
 	var lc C.BOOL
 	if lastCall {
 		lc = C.BOOL(1)
@@ -114,17 +114,16 @@ func (m *CmsDecoder) Decode(dest io.Writer) (written int64, err error) {
 }
 
 // CertStore returns message certificates
-func (m *CmsDecoder) CertStore() (*CertStore, error) {
-	var res CertStore
-	res.hStore = C.openStoreMsg(m.hMsg)
-	if res.hStore == C.HCERTSTORE(nil) {
-		return nil, getErr("Error opening message cert store")
+func (m CmsDecoder) CertStore() (res CertStore, err error) {
+	if res.hStore = C.openStoreMsg(m.hMsg); res.hStore == nil {
+		err = getErr("Error opening message cert store")
+		return
 	}
-	return &res, nil
+	return
 }
 
 // Verify verifies message signature against signer certificate. Returns error if verification failed
-func (m *CmsDecoder) Verify(c *Cert) error {
+func (m CmsDecoder) Verify(c Cert) error {
 	if 0 == C.CryptMsgControl(m.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) {
 		return getErr("Error verifying message signature")
 	}

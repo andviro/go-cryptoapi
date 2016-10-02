@@ -155,19 +155,17 @@ func (s CertStore) GetBySubject(subject string) (res Cert, err error) {
 
 // Add inserts certificate into store replacing existing certificate link if
 // it's already added
-func (s *CertStore) Add(cert Cert) error {
+func (s CertStore) Add(cert Cert) error {
 	if C.CertAddCertificateContextToStore(s.hStore, cert.pCert, C.CERT_STORE_ADD_REPLACE_EXISTING, nil) == 0 {
 		return getErr("Couldn't add certificate to store")
 	}
 	return nil
 }
 
-func (s *CertStore) Certs() []*Cert {
-	var res []*Cert
-
+func (s CertStore) Certs() (res []Cert) {
 	for pCert := C.CertEnumCertificatesInStore(s.hStore, nil); pCert != nil; pCert = C.CertEnumCertificatesInStore(s.hStore, pCert) {
 		pCertDup := C.CertDuplicateCertificateContext(pCert)
-		res = append(res, &Cert{pCertDup})
+		res = append(res, Cert{pCertDup})
 	}
-	return res
+	return
 }
