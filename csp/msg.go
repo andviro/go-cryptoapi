@@ -11,7 +11,7 @@ CMSG_STREAM_INFO *mkStreamInfo(const void *pvArg);
 import "C"
 
 import (
-	"fmt"
+	//"fmt"
 	"io"
 	"unsafe"
 )
@@ -20,29 +20,29 @@ const bufSize = 1 * 1024
 
 // CmsDecoder encapsulates stream decoder of PKCS7 message
 type CmsDecoder struct {
-	hMsg      C.HCRYPTMSG
-	dest      io.Writer
-	written   int
-	lastError error
+	hMsg    C.HCRYPTMSG
+	src     io.Reader
+	data    unsafe.Pointer
+	n, maxN int
+	eof     bool
 }
 
 //export msgDecodeCallback
 func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	msg := (*CmsDecoder)(pvArg)
-	if msg.dest == nil {
-		return true
+	if int(cbData) > msg.maxN {
+		// buffer overrun
+		return false
 	}
-
-	var n int
-	chunk := C.GoBytes(unsafe.Pointer(pbData), C.int(cbData))
-	n, msg.lastError = msg.dest.Write(chunk)
-	msg.written += n
-	return msg.lastError == nil
+	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
+	msg.n = int(cbData)
+	msg.eof = fFinal
+	return true
 }
 
 // NewCmsDecoder creates new CmsDecoder. If detachedSig parameter is specified,
 // it must contain detached P7S signature
-func NewCmsDecoder(detachedSig ...[]byte) (res *CmsDecoder, err error) {
+func NewCmsDecoder(src io.Reader, detachedSig ...[]byte) (res *CmsDecoder, err error) {
 	var (
 		flags C.DWORD
 		si    *C.CMSG_STREAM_INFO
@@ -64,6 +64,7 @@ func NewCmsDecoder(detachedSig ...[]byte) (res *CmsDecoder, err error) {
 		nil,           // recipient information
 		si,            // stream info
 	)
+	res.src = src
 	if res.hMsg == nil {
 		err = getErr("Error opening message for decoding")
 		return
@@ -93,30 +94,27 @@ func (m CmsDecoder) update(buf []byte, n int, lastCall bool) bool {
 	return C.CryptMsgUpdate(m.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
-// Decode parses message input stream from `src` and writes decoded message body to `dest`.
-func (m *CmsDecoder) Decode(dest io.Writer, src io.Reader) (written int64, err error) {
-	var n int
-	m.written = 0
-	m.dest = dest
-	buf := make([]byte, bufSize)
-	for {
-		n, err = src.Read(buf)
-		ok := m.update(buf, n, err == io.EOF)
-		written = int64(m.written)
-
-		if !ok {
-			err = getErr("Error updating message body")
-			return
-		}
-		if err == io.EOF {
-			err = m.lastError
-			return
-		}
-		if err != nil {
-			err = fmt.Errorf("Error reading message part: %v", err)
-			return
-		}
+// Read parses message input stream and fills buf parameter with decoded data chunk
+func (m *CmsDecoder) Read(buf []byte) (n int, err error) {
+	nRead, err := m.src.Read(buf)
+	if err != nil {
+		return
 	}
+
+	m.data = unsafe.Pointer(&buf[0])
+	m.n = 0
+	m.maxN = len(buf)
+
+	ok := m.update(buf, nRead, err == io.EOF)
+	n = m.n
+	if !ok {
+		err = getErr("Error updating message body")
+		return
+	}
+	if m.eof {
+		err = io.EOF
+	}
+	return
 }
 
 // CertStore returns message certificates
