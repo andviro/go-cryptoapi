@@ -5,6 +5,8 @@ package csp
 
 BOOL WINAPI msgDecodeCallback_cgo(const void *pvArg, BYTE *pbData, DWORD cbData, BOOL fFinal);
 HCERTSTORE openStoreMsg(HCRYPTMSG hMsg);
+CMSG_STREAM_INFO *mkStreamInfo(const void *pvArg);
+
 */
 import "C"
 
@@ -37,9 +39,8 @@ func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFi
 // detachedSig parameter is specified, it must contain detached P7S signature
 func NewCmsDecoder(ctx Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
 	var (
-		si           *C.CMSG_STREAM_INFO
-		stStreamInfo C.CMSG_STREAM_INFO
-		flags        C.DWORD
+		flags C.DWORD
+		si    *C.CMSG_STREAM_INFO
 	)
 	res := &CmsDecoder{Ctx: ctx}
 
@@ -47,10 +48,8 @@ func NewCmsDecoder(ctx Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
 		flags = C.CMSG_DETACHED_FLAG
 		si = nil
 	} else {
-		stStreamInfo.cbContent = C.DWORD(0xffffffff)
-		stStreamInfo.pfnStreamOutput = C.PFN_CMSG_STREAM_OUTPUT(C.msgDecodeCallback_cgo)
-		stStreamInfo.pvArg = unsafe.Pointer(res)
-		si = &stStreamInfo
+		si = C.mkStreamInfo(unsafe.Pointer(res))
+		defer C.free(unsafe.Pointer(si))
 	}
 
 	res.hMsg = C.CryptMsgOpenToDecode(
@@ -59,9 +58,9 @@ func NewCmsDecoder(ctx Ctx, detachedSig ...[]byte) (*CmsDecoder, error) {
 		0,             // message type (get from message)
 		ctx.hProv,     // cryptographic provider
 		nil,           // recipient information
-		si,
+		si,            // stream info
 	)
-	if res.hMsg == C.HCRYPTMSG(nil) {
+	if res.hMsg == nil {
 		return nil, getErr("Error opening message for decoding")
 	}
 	for i, p := range detachedSig {
