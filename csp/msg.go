@@ -97,7 +97,7 @@ func (m CmsDecoder) update(buf []byte, n int, lastCall bool) bool {
 // Read parses message input stream and fills buf parameter with decoded data chunk
 func (m *CmsDecoder) Read(buf []byte) (n int, err error) {
 	nRead, err := m.src.Read(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return
 	}
 
@@ -110,9 +110,6 @@ func (m *CmsDecoder) Read(buf []byte) (n int, err error) {
 	if !ok {
 		err = getErr("Error updating message body")
 		return
-	}
-	if m.eof {
-		err = io.EOF
 	}
 	return
 }
