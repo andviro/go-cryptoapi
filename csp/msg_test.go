@@ -45,8 +45,6 @@ func TestCmsDetached(t *testing.T) {
 	is.NotErr(err)
 	msg, err := NewCmsDecoder(data, sig)
 	is.NotErr(err)
-	_, err = ioutil.ReadAll(msg)
-	is.NotErr(err)
 
 	store, err := msg.CertStore()
 	is.NotErr(err)
