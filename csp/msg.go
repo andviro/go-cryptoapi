@@ -3,9 +3,27 @@ package csp
 /*
 #include "common.h"
 
-BOOL WINAPI msgDecodeCallback_cgo(const void *pvArg, BYTE *pbData, DWORD cbData, BOOL fFinal);
-HCERTSTORE openStoreMsg(HCRYPTMSG hMsg);
-CMSG_STREAM_INFO *mkStreamInfo(const void *pvArg);
+BOOL WINAPI msgDecodeCallback_cgo(
+    const void *pvArg,
+    BYTE *pbData,
+    DWORD cbData,
+    BOOL fFinal)
+{
+	return msgDecodeCallback(pvArg, pbData, cbData, fFinal);
+}
+
+HCERTSTORE openStoreMsg(HCRYPTMSG hMsg) {
+	return CertOpenStore(CERT_STORE_PROV_MSG, MY_ENC_TYPE, 0, CERT_STORE_CREATE_NEW_FLAG, hMsg);
+}
+
+CMSG_STREAM_INFO *mkStreamInfo(void *pvArg) {
+	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
+	memset(res, 0, sizeof(CMSG_STREAM_INFO));
+	res->cbContent = 0xffffffff;
+	res->pfnStreamOutput = &msgDecodeCallback_cgo;
+	res->pvArg = pvArg;
+	return res;
+}
 
 */
 import "C"
@@ -24,18 +42,6 @@ type CmsDecoder struct {
 	data    unsafe.Pointer
 	n, maxN int
 	eof     bool
-}
-
-//export msgDecodeCallback
-func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	msg := (*CmsDecoder)(pvArg)
-	if int(cbData) > msg.maxN {
-		// buffer overrun
-		return false
-	}
-	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
-	msg.n = int(cbData)
-	return true
 }
 
 // NewCmsDecoder creates new CmsDecoder. If detachedSig parameter is specified,
