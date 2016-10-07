@@ -12,13 +12,13 @@ import (
 func TestCmsDecoder(t *testing.T) {
 	is := is.New(t)
 
-	f, err := os.Open("/tmp/logical.cms")
+	f, err := os.Open("/tmp/logical2.cms")
 	is.NotErr(err)
 	defer f.Close()
 
 	msg, err := NewCmsDecoder(f)
 	is.NotErr(err)
-	o, err := os.Create("/tmp/logical.bin")
+	o, err := os.Create("/tmp/logical2.bin")
 	is.NotErr(err)
 	defer o.Close()
 
@@ -31,7 +31,7 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotZero(store)
 
 	for _, c := range store.Certs() {
-		is.Lax().NotErr(msg.Verify(c)) // XXX can not verify RSA on Linux
+		is.Lax().NotErr(msg.Verify(c))
 	}
 	is.NotErr(msg.Close())
 }
@@ -43,17 +43,15 @@ func TestCmsDetached(t *testing.T) {
 	is.NotErr(err)
 	data, err := os.Open("/tmp/data1.bin")
 	is.NotErr(err)
-	_, err = NewCmsDecoder(data, sig)
+	msg, err := NewCmsDecoder(data, sig)
 	is.NotErr(err)
-	//_, err = msg.Decode(nil, data)
-	//is.NotErr(err)
 
-	//store, err := msg.CertStore()
-	//is.NotErr(err)
-	//is.NotZero(store)
+	store, err := msg.CertStore()
+	is.NotErr(err)
+	is.NotZero(store)
 
-	//for _, c := range store.Certs() {
-	//is.Lax().NotErr(msg.Verify(c))
-	//}
-	//is.NotErr(msg.Close())
+	for _, c := range store.Certs() {
+		is.Lax().NotErr(msg.Verify(c))
+	}
+	is.NotErr(msg.Close())
 }
