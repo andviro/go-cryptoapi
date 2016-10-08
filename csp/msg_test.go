@@ -3,6 +3,7 @@ package csp
 import (
 	//"fmt"
 	"gopkg.in/tylerb/is.v1"
+	"io"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -11,20 +12,17 @@ import (
 func TestCmsDecoder(t *testing.T) {
 	is := is.New(t)
 
-	f, err := os.Open("/tmp/logical.cms")
+	f, err := os.Open("/tmp/logical2.cms")
 	is.NotErr(err)
 	defer f.Close()
 
-	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
+	msg, err := NewCmsDecoder(f)
 	is.NotErr(err)
-
-	msg, err := NewCmsDecoder(ctx)
-	is.NotErr(err)
-	o, err := os.Create("/tmp/logical.bin")
+	o, err := os.Create("/tmp/logical2.bin")
 	is.NotErr(err)
 	defer o.Close()
 
-	n, err := msg.Decode(o, f)
+	n, err := io.Copy(o, msg)
 	is.NotErr(err)
 	is.NotZero(n)
 
@@ -33,7 +31,7 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotZero(store)
 
 	for _, c := range store.Certs() {
-		is.Lax().NotErr(msg.Verify(c)) // XXX
+		is.Lax().NotErr(msg.Verify(c))
 	}
 	is.NotErr(msg.Close())
 }
@@ -41,16 +39,11 @@ func TestCmsDecoder(t *testing.T) {
 func TestCmsDetached(t *testing.T) {
 	is := is.New(t)
 
-	ctx, err := AcquireCtx("", provName, provType, CryptVerifyContext)
-	is.NotErr(err)
-
 	sig, err := ioutil.ReadFile("/tmp/data1.p7s")
 	is.NotErr(err)
 	data, err := os.Open("/tmp/data1.bin")
 	is.NotErr(err)
-	msg, err := NewCmsDecoder(ctx, sig)
-	is.NotErr(err)
-	_, err = msg.Decode(nil, data)
+	msg, err := NewCmsDecoder(data, sig)
 	is.NotErr(err)
 
 	store, err := msg.CertStore()

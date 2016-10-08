@@ -38,44 +38,44 @@ type CertStore struct {
 }
 
 // MemoryStore returns handle to new empty in-memory certificate store
-func MemoryStore() (*CertStore, error) {
-	var res CertStore
+func MemoryStore() (res CertStore, err error) {
 	res.hStore = C.openStoreMem()
 	if res.hStore == C.HCERTSTORE(nil) {
-		return &res, getErr("Error creating memory cert store")
+		err = getErr("Error creating memory cert store")
+		return
 	}
-	return &res, nil
+	return
 }
 
 // SystemStore returns handle to certificate store with certain name, using
 // default system cryptoprovider
-func SystemStore(name string) (*CertStore, error) {
-	var res CertStore
-	cName := unsafe.Pointer(C.CString(name))
-	defer C.free(cName)
+func SystemStore(name string) (res CertStore, err error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
 
 	res.hStore = C.openStoreSystem(C.HCRYPTPROV(0), (*C.CHAR)(cName))
 	if res.hStore == C.HCERTSTORE(nil) {
-		return &res, getErr("Error getting system cert store")
+		err = getErr("Error getting system cert store")
+		return
 	}
-	return &res, nil
+	return
 }
 
 // CertStore method returns handle to certificate store in certain CSP context
-func (c *Ctx) CertStore(name string) (*CertStore, error) {
-	var res CertStore
+func (c Ctx) CertStore(name string) (res CertStore, err error) {
 	cName := charPtr(name)
 	defer freePtr(cName)
 
 	res.hStore = C.openStoreSystem(c.hProv, cName)
-	if res.hStore == C.HCERTSTORE(nil) {
-		return &res, getErr("Error getting system cert store")
+	if res.hStore == nil {
+		err = getErr("Error getting system cert store")
+		return
 	}
-	return &res, nil
+	return
 }
 
 // Close releases cert store handle
-func (s *CertStore) Close() error {
+func (s CertStore) Close() error {
 	if C.CertCloseStore(s.hStore, C.CERT_CLOSE_STORE_CHECK_FLAG) == 0 {
 		return getErr("Error closing cert store")
 	}
@@ -83,27 +83,24 @@ func (s *CertStore) Close() error {
 }
 
 // FindCerts returns slice of *Cert's in store that satisfy findType and findPara
-func (s *CertStore) FindCerts(findType C.DWORD, findPara unsafe.Pointer) []*Cert {
-	var res []*Cert
+func (s CertStore) FindCerts(findType C.DWORD, findPara unsafe.Pointer) []Cert {
+	var res []Cert
 
 	for pCert := C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, nil); pCert != nil; pCert = C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, pCert) {
 		pCertDup := C.CertDuplicateCertificateContext(pCert)
-		res = append(res, &Cert{pCertDup})
+		res = append(res, Cert{pCertDup})
 	}
 	return res
 }
 
-// GetCert returns first of Cert's in store that satisfy findType and findPara
-func (s *CertStore) GetCert(findType C.DWORD, findPara unsafe.Pointer) *Cert {
-	if pCert := C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, nil); pCert != nil {
-		return &Cert{pCert}
-	}
-	return nil
+// getCert returns first of Cert's in store that satisfy findType and findPara
+func (s CertStore) getCert(findType C.DWORD, findPara unsafe.Pointer) C.PCCERT_CONTEXT {
+	return C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, nil)
 }
 
 // FindBySubject returns slice of certificates with a subject that matches
 // string
-func (s *CertStore) FindBySubject(subject string) []*Cert {
+func (s CertStore) FindBySubject(subject string) []Cert {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
 	return s.FindCerts(C.CERT_FIND_SUBJECT_STR, cSubject)
@@ -112,7 +109,7 @@ func (s *CertStore) FindBySubject(subject string) []*Cert {
 // FindByThumb returns slice of certificates that match given thumbprint. If
 // thumbprint supplied could not be decoded from string, FindByThumb will
 // return nil slice
-func (s *CertStore) FindByThumb(thumb string) []*Cert {
+func (s CertStore) FindByThumb(thumb string) []Cert {
 	bThumb, err := hex.DecodeString(thumb)
 	if err != nil {
 		return nil
@@ -126,50 +123,49 @@ func (s *CertStore) FindByThumb(thumb string) []*Cert {
 }
 
 // GetByThumb returns first certificate in store that match given thumbprint
-func (s *CertStore) GetByThumb(thumb string) (*Cert, error) {
+func (s CertStore) GetByThumb(thumb string) (res Cert, err error) {
 	bThumb, err := hex.DecodeString(thumb)
 	if err != nil {
-		return nil, err
+		return
 	}
 	var hashBlob C.CRYPT_HASH_BLOB
 	hashBlob.cbData = C.DWORD(len(bThumb))
 	bThumbPtr := C.CBytes(bThumb)
 	defer C.free(bThumbPtr)
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
-	if crt := s.GetCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob)); crt == nil {
-		return nil, getErr("Error looking up certificate by thumb")
-	} else {
-		return crt, nil
+	if res.pCert = s.getCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob)); res.pCert == nil {
+		err = getErr("Error looking up certificate by thumb")
+		return
 	}
+	return
 }
 
 // GetBySubject returns first certificate with a subject that matches
 // given string
-func (s *CertStore) GetBySubject(subject string) (*Cert, error) {
+func (s CertStore) GetBySubject(subject string) (res Cert, err error) {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
-	if crt := s.GetCert(C.CERT_FIND_SUBJECT_STR, cSubject); crt == nil {
-		return nil, getErr("Error looking up certificate by subject string")
-	} else {
-		return crt, nil
+
+	if res.pCert = s.getCert(C.CERT_FIND_SUBJECT_STR, cSubject); res.pCert == nil {
+		err = getErr("Error looking up certificate by subject string")
+		return
 	}
+	return
 }
 
 // Add inserts certificate into store replacing existing certificate link if
 // it's already added
-func (s *CertStore) Add(cert *Cert) error {
+func (s CertStore) Add(cert Cert) error {
 	if C.CertAddCertificateContextToStore(s.hStore, cert.pCert, C.CERT_STORE_ADD_REPLACE_EXISTING, nil) == 0 {
 		return getErr("Couldn't add certificate to store")
 	}
 	return nil
 }
 
-func (s *CertStore) Certs() []*Cert {
-	var res []*Cert
-
+func (s CertStore) Certs() (res []Cert) {
 	for pCert := C.CertEnumCertificatesInStore(s.hStore, nil); pCert != nil; pCert = C.CertEnumCertificatesInStore(s.hStore, pCert) {
 		pCertDup := C.CertDuplicateCertificateContext(pCert)
-		res = append(res, &Cert{pCertDup})
+		res = append(res, Cert{pCertDup})
 	}
-	return res
+	return
 }

@@ -10,25 +10,24 @@ import (
 
 // Cert encapsulates certificate context
 type Cert struct {
-	pCert *C.CERT_CONTEXT
+	pCert C.PCCERT_CONTEXT
 }
 
 // ParseCert creates certificate context from byte slice
-func ParseCert(buf []byte) (*Cert, error) {
-	var pCert C.PCCERT_CONTEXT
+func ParseCert(buf []byte) (res Cert, err error) {
+	bufBytes := C.CBytes(buf)
+	defer C.free(bufBytes)
 
-	pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(len(buf)))
-	if pCert == C.PCCERT_CONTEXT(nil) {
-		return nil, getErr("Error creating certficate context")
+	res.pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(bufBytes), C.DWORD(len(buf)))
+	if res.pCert == nil {
+		err = getErr("Error creating certficate context")
+		return
 	}
-	return &Cert{pCert}, nil
+	return
 }
 
 // Close releases certificate context
-func (c *Cert) Close() error {
-	if c == nil {
-		return nil
-	}
+func (c Cert) Close() error {
 	if C.CertFreeCertificateContext(c.pCert) == 0 {
 		return getErr("Error releasing certificate context")
 	}
@@ -44,7 +43,7 @@ const (
 )
 
 // GetProperty is a base function for extracting certificate context properties
-func (c *Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
+func (c Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
 	var slen C.DWORD
 	var res []byte
 	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propId), nil, &slen) == 0 {
@@ -58,13 +57,13 @@ func (c *Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
 }
 
 // ThumbPrint returns certificate's hash as a hexadecimal string
-func (c *Cert) ThumbPrint() (string, error) {
+func (c Cert) ThumbPrint() (string, error) {
 	thumb, err := c.GetProperty(CertHashProp)
 	return hex.EncodeToString(thumb), err
 }
 
 // MustThumbprint returns certificate's hash as a hexadecimal string or panics
-func (c *Cert) MustThumbPrint() string {
+func (c Cert) MustThumbPrint() string {
 	if thumb, err := c.ThumbPrint(); err != nil {
 		panic(err)
 	} else {
@@ -73,13 +72,13 @@ func (c *Cert) MustThumbPrint() string {
 }
 
 // SubjectId returs certificate's subject public key Id as a hexadecimal string
-func (c *Cert) SubjectId() (string, error) {
+func (c Cert) SubjectId() (string, error) {
 	thumb, err := c.GetProperty(CertKeyIdentifierProp)
 	return hex.EncodeToString(thumb), err
 }
 
 // MustSubjectId returns certificate's subject id or panics
-func (c *Cert) MustSubjectId() string {
+func (c Cert) MustSubjectId() string {
 	if subj, err := c.SubjectId(); err != nil {
 		panic(err)
 	} else {
@@ -88,6 +87,6 @@ func (c *Cert) MustSubjectId() string {
 }
 
 // Extract returns encoded certificate as byte slice
-func (c *Cert) Bytes() []byte {
+func (c Cert) Bytes() []byte {
 	return C.GoBytes(unsafe.Pointer(c.pCert.pbCertEncoded), C.int(c.pCert.cbCertEncoded))
 }

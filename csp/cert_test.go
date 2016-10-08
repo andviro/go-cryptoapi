@@ -25,7 +25,7 @@ Fy/OfGEaF8zewD+iSsmob52ifRG7qYcN1rEsyfHpQ33oooB/I8s9Nil9WatEpZNC
 Sp4EAT/s6eUCx00m2uS2SJ83n7XHWr0hKxEtISL9tAA1fzwvT1eswO2IdKSBg47K
 `
 
-func getCert() *Cert {
+func getCert() Cert {
 	data, _ := base64.StdEncoding.DecodeString(certData)
 	crt, err := ParseCert(data)
 	if err != nil {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"github.com/andviro/go-cryptoapi/csp"
 )
 
@@ -14,8 +14,13 @@ func main() {
 		panic(err)
 	}
 
-	ctx, err := csp.AcquireCtx("\\\\.\\HDIMAGE\\TestGoCryptoAPIContainer", provs[0].Name, provs[0].Type, csp.CryptNewKeyset)
-	if err != nil {
+	ctx, err := csp.AcquireCtx(csp.Container("TestGoCryptoAPIContainer"), provs[0].Name, provs[0].Type, csp.CryptNewKeyset)
+	if cspErr, ok := err.(csp.CspError); ok {
+		if cspErr.Code == csp.ErrExists {
+			fmt.Println("Certificate already exists")
+			return
+		}
+	} else {
 		panic(err)
 	}
 	defer ctx.Close()
