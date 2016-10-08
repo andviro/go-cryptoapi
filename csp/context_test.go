@@ -61,5 +61,11 @@ func TestMain(m *testing.M) {
 	}
 	provName = x[0].Name
 	provType = x[0].Type
+
+	if err := InitTls(); err != nil {
+		panic(err)
+	}
+	defer DeinitTls()
+
 	os.Exit(m.Run())
 }
