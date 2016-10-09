@@ -54,6 +54,48 @@ static SECURITY_STATUS AcquireCredentialsHandle_wrap(PVOID pAuthData, PCredHandl
                         ptsExpiry);             // (out) Lifetime (optional)
 }
 
+
+
+static SECURITY_STATUS InitializeSecurityContext_wrap(
+  PCredHandle    phCredential,
+  PCtxtHandle    phContext,
+  char          *pszTargetName,
+  PSecBufferDesc pInput,
+  PCtxtHandle    phNewContext,
+  PSecBufferDesc pOutput,
+  PULONG         pfContextAttr,
+  PTimeStamp     ptsExpiry
+) {
+
+    ULONG fContextReq = ISC_REQ_SEQUENCE_DETECT
+		| ISC_REQ_REPLAY_DETECT
+		| ISC_REQ_CONFIDENTIALITY
+		| ISC_RET_EXTENDED_ERROR
+		| ISC_REQ_ALLOCATE_MEMORY
+		| ISC_REQ_STREAM;
+
+	return g_pSSPI->InitializeSecurityContextA( phCredential, phContext, pszTargetName, fContextReq, 0, SECURITY_NATIVE_DREP, pInput, 0, phNewContext, pOutput, pfContextAttr, ptsExpiry);
+};
+
+static SECURITY_STATUS FreeContextBuffer_wrap(void *pvContextBuffer) {
+	return g_pSSPI->FreeContextBuffer(pvContextBuffer);
+}
+            //g_pSSPI->DeleteSecurityContext(phContext);
+
+static void AllocateBuffers(SecBufferDesc *buf, int n) {
+    buf->cBuffers = 1;
+    buf->pBuffers = malloc(n * sizeof(SecBuffer));
+    buf->ulVersion = SECBUFFER_VERSION;
+}
+
+static void FreeBuffers(SecBufferDesc *buf) {
+    free(buf->pBuffers);
+}
+
+static SecBuffer *GetBuffer(SecBufferDesc *buf, int n) {
+	return &buf->pBuffers[n];
+}
+
 */
 import "C"
 
@@ -64,8 +106,12 @@ import (
 
 // Conn encapsulates TLS connection implementing net.Conn interface
 type Conn struct {
-	conn  net.Conn
-	creds *Credentials
+	conn       net.Conn
+	creds      *Credentials
+	hContext   C.CtxtHandle
+	targetName *C.char
+	attrs      C.ULONG
+	expires    C.TimeStamp
 }
 
 // Credentials wraps security context credentials
@@ -102,6 +148,31 @@ func NewCredentials() (res *Credentials, err error) {
 }
 
 func (c *Conn) clientHandshake() (err error) {
+	var (
+		OutBuffer C.SecBufferDesc
+	)
+	C.AllocateBuffers(&OutBuffer, 1)
+	defer C.FreeBuffers(&OutBuffer)
+
+	C.GetBuffer(&OutBuffer, 0).pvBuffer = nil
+	C.GetBuffer(&OutBuffer, 0).BufferType = C.SECBUFFER_TOKEN
+	C.GetBuffer(&OutBuffer, 0).cbBuffer = 0
+
+	if stat := C.InitializeSecurityContext_wrap(
+		&c.creds.hClientCreds,
+		nil,
+		c.targetName,
+		nil,
+		&c.hContext,
+		&OutBuffer,
+		&c.attrs,
+		&c.expires,
+	); stat != C.SEC_I_CONTINUE_NEEDED {
+		err = fmt.Errorf("Error initializing security context: %x", stat)
+		return
+	}
+	defer C.FreeContextBuffer_wrap(C.GetBuffer(&OutBuffer, 0).pvBuffer)
+
 	return
 }
 
