@@ -190,7 +190,7 @@ func (c *Conn) clientHandshake() error {
 func (c *Conn) mainHandshakeLoop(doRead bool) error {
 	var (
 		buf                 = make([]byte, TlsBufferSize)
-		bufPos              int
+		numRead              int
 		InBuffer, OutBuffer C.SecBufferDesc
 	)
 	C.AllocateBuffers(&OutBuffer, 1)
@@ -205,17 +205,17 @@ func (c *Conn) mainHandshakeLoop(doRead bool) error {
 	for stat := C.SECURITY_STATUS(C.SEC_I_CONTINUE_NEEDED); stat == C.SEC_I_CONTINUE_NEEDED || stat == C.SEC_E_INCOMPLETE_MESSAGE || stat == C.SEC_I_INCOMPLETE_CREDENTIALS; {
 		if err := func() error {
 			if doRead {
-				n, err := c.conn.Read(buf[bufPos:])
+				n, err := c.conn.Read(buf[numRead:])
 				if err != nil {
 					return err
 				}
-				bufPos += n
+				numRead += n
 			} else {
 				doRead = true
 			}
 
 			in0.pvBuffer = unsafe.Pointer(&buf[0])
-			in0.cbBuffer = C.uint(bufPos)
+			in0.cbBuffer = C.uint(numRead)
 			in0.BufferType = C.SECBUFFER_TOKEN
 
 			in1.pvBuffer = nil
