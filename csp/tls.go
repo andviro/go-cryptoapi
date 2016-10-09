@@ -102,7 +102,10 @@ import "C"
 import (
 	"fmt"
 	"net"
+	"unsafe"
 )
+
+const TlsBufferSize = 8192
 
 // Conn encapsulates TLS connection implementing net.Conn interface
 type Conn struct {
@@ -147,16 +150,17 @@ func NewCredentials() (res *Credentials, err error) {
 	return
 }
 
-func (c *Conn) clientHandshake() (err error) {
+func (c *Conn) clientHandshake() error {
 	var (
 		OutBuffer C.SecBufferDesc
 	)
 	C.AllocateBuffers(&OutBuffer, 1)
 	defer C.FreeBuffers(&OutBuffer)
 
-	C.GetBuffer(&OutBuffer, 0).pvBuffer = nil
-	C.GetBuffer(&OutBuffer, 0).BufferType = C.SECBUFFER_TOKEN
-	C.GetBuffer(&OutBuffer, 0).cbBuffer = 0
+	out0 := C.GetBuffer(&OutBuffer, 0)
+	out0.pvBuffer = nil
+	out0.BufferType = C.SECBUFFER_TOKEN
+	out0.cbBuffer = 0
 
 	if stat := C.InitializeSecurityContext_wrap(
 		&c.creds.hClientCreds,
@@ -168,12 +172,78 @@ func (c *Conn) clientHandshake() (err error) {
 		&c.attrs,
 		&c.expires,
 	); stat != C.SEC_I_CONTINUE_NEEDED {
-		err = fmt.Errorf("Error initializing security context: %x", stat)
-		return
+		return fmt.Errorf("Error initializing security context: %x", stat)
 	}
-	defer C.FreeContextBuffer_wrap(C.GetBuffer(&OutBuffer, 0).pvBuffer)
+	defer C.FreeContextBuffer_wrap(out0.pvBuffer)
 
-	return
+	n, err := c.conn.Write(C.GoBytes(out0.pvBuffer, C.int(out0.cbBuffer)))
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("Could not send handshake data")
+	}
+
+	return c.mainHandshakeLoop(true)
+}
+
+func (c *Conn) mainHandshakeLoop(doRead bool) error {
+	var (
+		buf                 = make([]byte, TlsBufferSize)
+		bufPos              int
+		InBuffer, OutBuffer C.SecBufferDesc
+	)
+	C.AllocateBuffers(&OutBuffer, 1)
+	defer C.FreeBuffers(&OutBuffer)
+	out0 := C.GetBuffer(&OutBuffer, 0)
+
+	C.AllocateBuffers(&InBuffer, 2)
+	defer C.FreeBuffers(&InBuffer)
+	in0 := C.GetBuffer(&InBuffer, 0)
+	in1 := C.GetBuffer(&InBuffer, 1)
+
+	for stat := C.SECURITY_STATUS(C.SEC_I_CONTINUE_NEEDED); stat == C.SEC_I_CONTINUE_NEEDED || stat == C.SEC_E_INCOMPLETE_MESSAGE || stat == C.SEC_I_INCOMPLETE_CREDENTIALS; {
+		if err := func() error {
+			if doRead {
+				n, err := c.conn.Read(buf[bufPos:])
+				if err != nil {
+					return err
+				}
+				bufPos += n
+			} else {
+				doRead = true
+			}
+
+			in0.pvBuffer = unsafe.Pointer(&buf[0])
+			in0.cbBuffer = C.uint(bufPos)
+			in0.BufferType = C.SECBUFFER_TOKEN
+
+			in1.pvBuffer = nil
+			in1.cbBuffer = 0
+			in1.BufferType = C.SECBUFFER_EMPTY
+
+			out0.pvBuffer = nil
+			out0.BufferType = C.SECBUFFER_TOKEN
+			out0.cbBuffer = 0
+
+			stat = C.InitializeSecurityContext_wrap(
+				&c.creds.hClientCreds,
+				nil,
+				c.targetName,
+				&InBuffer,
+				&c.hContext,
+				&OutBuffer,
+				&c.attrs,
+				&c.expires,
+			)
+			defer C.FreeContextBuffer_wrap(out0.pvBuffer)
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func Client(conn net.Conn) (res *Conn, err error) {
