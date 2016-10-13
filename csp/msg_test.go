@@ -16,7 +16,7 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotErr(err)
 	defer f.Close()
 
-	msg, err := NewCmsDecoder(f)
+	msg, err := OpenToDecode(f)
 	is.NotErr(err)
 	o, err := os.Create("/tmp/logical2.bin")
 	is.NotErr(err)
@@ -43,7 +43,7 @@ func TestCmsDetached(t *testing.T) {
 	is.NotErr(err)
 	data, err := os.Open("/tmp/data1.bin")
 	is.NotErr(err)
-	msg, err := NewCmsDecoder(data, sig)
+	msg, err := OpenToDecode(data, sig)
 	is.NotErr(err)
 
 	store, err := msg.CertStore()
