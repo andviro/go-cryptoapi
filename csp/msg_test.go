@@ -1,7 +1,8 @@
 package csp
 
 import (
-	//"fmt"
+	"bytes"
+	"fmt"
 	"gopkg.in/tylerb/is.v1"
 	"io"
 	"io/ioutil"
@@ -9,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCmsDecoder(t *testing.T) {
+func TestMsgDecode(t *testing.T) {
 	is := is.New(t)
 
 	f, err := os.Open("/tmp/logical2.cms")
@@ -36,7 +37,7 @@ func TestCmsDecoder(t *testing.T) {
 	is.NotErr(msg.Close())
 }
 
-func TestCmsDetached(t *testing.T) {
+func TestMsgVerifyDetached(t *testing.T) {
 	is := is.New(t)
 
 	sig, err := ioutil.ReadFile("/tmp/data1.p7s")
@@ -54,4 +55,28 @@ func TestCmsDetached(t *testing.T) {
 		is.Lax().NotErr(msg.Verify(c))
 	}
 	is.NotErr(msg.Close())
+}
+
+func TestMsgEncode(t *testing.T) {
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb("45ac9c979cfe755c768bd07659e2ebb45bb24e37")
+	is.NotErr(err)
+	defer crt.Close()
+
+	data := bytes.NewBufferString("Test data")
+	dest := new(bytes.Buffer)
+	msg, err := OpenToEncode(dest, EncodeOptions{
+		Signers: []Cert{crt},
+	})
+	is.NotErr(err)
+	defer msg.Close()
+
+	_, err = data.WriteTo(msg)
+	is.NotErr(err)
+	fmt.Printf("%#v\n", dest.Bytes())
 }

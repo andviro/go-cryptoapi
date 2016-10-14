@@ -33,21 +33,23 @@ static CMSG_SIGNED_ENCODE_INFO *mkSignedInfo(int n) {
 	res->cbSize = sizeof(CMSG_SIGNED_ENCODE_INFO);
 
 	res->cSigners = n;
-	res->rgSigners = (PCMSG_SIGNER_ENCODE_INFO) malloc(sizeof(CMSG_SIGNER_ENCODE_INFO*) * n);
+	res->rgSigners = (PCMSG_SIGNER_ENCODE_INFO) malloc(sizeof(CMSG_SIGNER_ENCODE_INFO) * n);
 	memset(res->rgSigners, 0, sizeof(CMSG_SIGNER_ENCODE_INFO) * n);
 
 	res->cCertEncoded = n;
 	res->rgCertEncoded =  malloc(sizeof(CERT_BLOB) * n);
 	memset(res->rgCertEncoded, 0, sizeof(CERT_BLOB) * n);
+
+	return res;
 }
 
 static void setSignedInfo(CMSG_SIGNED_ENCODE_INFO *out, int n, HCRYPTPROV hCryptProv, PCCERT_CONTEXT pSignerCert, DWORD dwKeySpec, LPSTR oid) {
-    out->rgSigners[n].cbSize = sizeof(CMSG_SIGNER_ENCODE_INFO);
-    out->rgSigners[n].pCertInfo = pSignerCert->pCertInfo;
-    out->rgSigners[n].hCryptProv = hCryptProv;
-    out->rgSigners[n].dwKeySpec = dwKeySpec;
-    out->rgSigners[n].HashAlgorithm.pszObjId = oid;
-    out->rgSigners[n].pvHashAuxInfo = NULL;
+	out->rgSigners[n].cbSize = sizeof(CMSG_SIGNER_ENCODE_INFO);
+	out->rgSigners[n].pCertInfo = pSignerCert->pCertInfo;
+	out->rgSigners[n].hCryptProv = hCryptProv;
+	out->rgSigners[n].dwKeySpec = dwKeySpec;
+	out->rgSigners[n].HashAlgorithm.pszObjId = oid;
+	out->rgSigners[n].pvHashAuxInfo = NULL;
 
 	out->rgCertEncoded[n].cbData = pSignerCert->cbCertEncoded;
 	out->rgCertEncoded[n].pbData = pSignerCert->pbCertEncoded;
@@ -89,7 +91,8 @@ type Msg struct {
 	hMsg           C.HCRYPTMSG
 	src            io.Reader
 	dest           io.Writer
-	updateCallback func(*C.BYTE, C.DWORD, bool) bool
+	updateCallback func(*C.BYTE, C.DWORD, bool) error
+	lastError      error
 	data           unsafe.Pointer
 	n, maxN        int
 	eof            bool
@@ -140,14 +143,18 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 	return
 }
 
-func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
 	if int(cbData) > msg.maxN {
-		// buffer overrun
-		return false
+		return fmt.Errorf("Buffer overrun on decoding")
 	}
 	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
 	msg.n = int(cbData)
-	return true
+	return nil
+}
+
+func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
+	msg.n, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
+	return nil
 }
 
 // OpenToEncode creates new Msg in encode mode.
@@ -174,7 +181,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	defer C.freeSignedInfo(signedInfo)
 
 	hashOID := C.CString(options.HashAlg.String())
-	defer C.free(hashOID)
+	defer C.free(unsafe.Pointer(hashOID))
 
 	for i, signerCert := range options.Signers {
 		var (
@@ -201,7 +208,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		return
 	}
 	res.dest = dest
-
+	res.updateCallback = res.onEncode
 	return
 }
 
@@ -242,30 +249,19 @@ func (m *Msg) Read(buf []byte) (n int, err error) {
 		err = getErr("Error updating message body")
 		return
 	}
+	err = m.lastError
 	return
 }
 
 // Write encodes provided bytes into message output data stream
 func (m *Msg) Write(buf []byte) (n int, err error) {
-	if m.eof {
-		return 0, io.EOF
-	}
-	nRead, err := m.src.Read(buf)
-	if err != nil && err != io.EOF {
-		return
-	}
-
-	m.data = unsafe.Pointer(&buf[0])
-	m.n = 0
-	m.maxN = len(buf)
-	m.eof = (err == io.EOF)
-
-	ok := m.update(buf, nRead, m.eof)
-	n = m.n
+	ok := m.update(buf, len(buf), false)
+	n = len(buf)
 	if !ok {
 		err = getErr("Error updating message body")
 		return
 	}
+	err = m.lastError
 	return
 }
 
