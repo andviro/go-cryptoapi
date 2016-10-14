@@ -216,7 +216,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 // it also closes the underlying writer if it implements io.Closer
 func (m Msg) Close() error {
 	if m.dest != nil {
-		if !m.update([]byte{0}, 1, true) {
+		if !m.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
 		}
 	}
