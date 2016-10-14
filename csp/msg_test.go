@@ -74,9 +74,9 @@ func TestMsgEncode(t *testing.T) {
 		Signers: []Cert{crt},
 	})
 	is.NotErr(err)
-	defer msg.Close()
 
 	_, err = data.WriteTo(msg)
 	is.NotErr(err)
+	is.NotErr(msg.Close())
 	fmt.Printf("%#v\n", dest.Bytes())
 }

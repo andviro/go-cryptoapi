@@ -212,10 +212,19 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	return
 }
 
-// Close needs to be called to release internal message handle
+// Close needs to be called to release internal message handle. When in encode mode,
+// it also closes the underlying writer if it implements io.Closer
 func (m Msg) Close() error {
+	if m.dest != nil {
+		if !m.update([]byte{0}, 1, true) {
+			return getErr("Error finalizing message")
+		}
+	}
 	if C.CryptMsgClose(m.hMsg) == 0 {
-		return getErr("Error closing CMS decoder")
+		return getErr("Error closing message")
+	}
+	if cl, ok := m.dest.(io.Closer); ok {
+		return cl.Close()
 	}
 	return nil
 }
@@ -256,11 +265,11 @@ func (m *Msg) Read(buf []byte) (n int, err error) {
 // Write encodes provided bytes into message output data stream
 func (m *Msg) Write(buf []byte) (n int, err error) {
 	ok := m.update(buf, len(buf), false)
-	n = len(buf)
 	if !ok {
 		err = getErr("Error updating message body")
 		return
 	}
+	n = len(buf)
 	err = m.lastError
 	return
 }
