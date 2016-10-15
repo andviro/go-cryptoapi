@@ -95,11 +95,11 @@ func TestFind(t *testing.T) {
 		is.NotErr(c.Close())
 	}
 
-	//certsInStore3 := store.FindBySubject("Acme")
-	//is.NotZero(certsInStore3) // FIXME
-	//for _, c := range certsInStore3 {
-	//is.NotErr(c.Close())
-	//}
+	certsInStore3 := store.FindBySubject("Acme")
+	is.NotZero(certsInStore3)
+	for _, c := range certsInStore3 {
+		is.NotErr(c.Close())
+	}
 
 	certsInStore4 := store.Certs()
 	is.Equal(1, len(certsInStore4))
@@ -107,11 +107,10 @@ func TestFind(t *testing.T) {
 		is.NotErr(c.Close())
 	}
 
-	// BUG: FindBySubject followed by GetBySubject returns error
-	//crt3, err := store.GetBySubject("acme")
-	//is.NotErr(err)
-	//is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
-	//is.NotErr(crt3.Close())
+	crt3, err := store.GetBySubject("Acme")
+	is.NotErr(err)
+	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
+	is.NotErr(crt3.Close())
 }
 
 func TestExtractCert(t *testing.T) {

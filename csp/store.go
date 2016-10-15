@@ -103,7 +103,7 @@ func (s CertStore) getCert(findType C.DWORD, findPara unsafe.Pointer) C.PCCERT_C
 func (s CertStore) FindBySubject(subject string) []Cert {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
-	return s.FindCerts(C.CERT_FIND_SUBJECT_STR, cSubject)
+	return s.FindCerts(C.CERT_FIND_SUBJECT_STR_A, cSubject)
 }
 
 // FindByThumb returns slice of certificates that match given thumbprint. If
@@ -146,7 +146,7 @@ func (s CertStore) GetBySubject(subject string) (res Cert, err error) {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
 
-	if res.pCert = s.getCert(C.CERT_FIND_SUBJECT_STR, cSubject); res.pCert == nil {
+	if res.pCert = s.getCert(C.CERT_FIND_SUBJECT_STR_A, cSubject); res.pCert == nil {
 		err = getErr("Error looking up certificate by subject string")
 		return
 	}
