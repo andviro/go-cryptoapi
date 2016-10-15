@@ -2,7 +2,6 @@ package csp
 
 import (
 	"bytes"
-	"fmt"
 	"gopkg.in/tylerb/is.v1"
 	"io"
 	"io/ioutil"
@@ -78,5 +77,5 @@ func TestMsgEncode(t *testing.T) {
 	_, err = data.WriteTo(msg)
 	is.NotErr(err)
 	is.NotErr(msg.Close())
-	fmt.Printf("%#v\n", dest.Bytes())
+	is.NotZero(dest.Bytes())
 }
