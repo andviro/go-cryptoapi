@@ -122,10 +122,10 @@ func (s CertStore) FindByThumb(thumb string) []Cert {
 	return s.findCerts(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob))
 }
 
-// FindBySubjectID returns slice of certificates that match given subject key id. If
-// id supplied could not be decoded from string, FindBySubjectID will
+// FindBySubjectId returns slice of certificates that match given subject key ID. If
+// ID supplied could not be decoded from string, FindBySubjectId will
 // return nil slice
-func (s CertStore) FindBySubjectID(thumb string) []Cert {
+func (s CertStore) FindBySubjectId(thumb string) []Cert {
 	bThumb, err := hex.DecodeString(thumb)
 	if err != nil {
 		return nil
@@ -156,9 +156,9 @@ func (s CertStore) GetByThumb(thumb string) (res Cert, err error) {
 	return
 }
 
-// GetBySubjectID returns first certificate in store that match given subject key ID
-func (s CertStore) GetBySubjectID(keyID string) (res Cert, err error) {
-	bThumb, err := hex.DecodeString(keyID)
+// GetBySubjectId returns first certificate in store that match given subject key ID
+func (s CertStore) GetBySubjectId(keyId string) (res Cert, err error) {
+	bThumb, err := hex.DecodeString(keyId)
 	if err != nil {
 		return
 	}
