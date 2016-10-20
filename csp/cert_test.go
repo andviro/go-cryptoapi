@@ -83,7 +83,18 @@ func TestFind(t *testing.T) {
 	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt2.MustThumbPrint())
 	is.NotErr(crt2.Close())
 
+	crt2, err = store.GetBySubjectId("b091df915184fc44d9f9b23faf7b15939ecbca09")
+	is.NotErr(err)
+	is.Equal("b091df915184fc44d9f9b23faf7b15939ecbca09", crt2.MustSubjectId())
+	is.NotErr(crt2.Close())
+
 	certsInStore := store.FindByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
+	is.Equal(1, len(certsInStore))
+	for _, c := range certsInStore {
+		is.NotErr(c.Close())
+	}
+
+	certsInStore = store.FindBySubjectId("b091df915184fc44d9f9b23faf7b15939ecbca09")
 	is.Equal(1, len(certsInStore))
 	for _, c := range certsInStore {
 		is.NotErr(c.Close())
