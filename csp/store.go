@@ -82,8 +82,8 @@ func (s CertStore) Close() error {
 	return nil
 }
 
-// FindCerts returns slice of *Cert's in store that satisfy findType and findPara
-func (s CertStore) FindCerts(findType C.DWORD, findPara unsafe.Pointer) []Cert {
+// findCerts returns slice of *Cert's in store that satisfy findType and findPara
+func (s CertStore) findCerts(findType C.DWORD, findPara unsafe.Pointer) []Cert {
 	var res []Cert
 
 	for pCert := C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, nil); pCert != nil; pCert = C.CertFindCertificateInStore(s.hStore, C.MY_ENC_TYPE, 0, findType, findPara, pCert) {
@@ -103,7 +103,7 @@ func (s CertStore) getCert(findType C.DWORD, findPara unsafe.Pointer) C.PCCERT_C
 func (s CertStore) FindBySubject(subject string) []Cert {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
-	return s.FindCerts(C.CERT_FIND_SUBJECT_STR_A, cSubject)
+	return s.findCerts(C.CERT_FIND_SUBJECT_STR_A, cSubject)
 }
 
 // FindByThumb returns slice of certificates that match given thumbprint. If
@@ -119,7 +119,23 @@ func (s CertStore) FindByThumb(thumb string) []Cert {
 	bThumbPtr := C.CBytes(bThumb)
 	defer C.free(bThumbPtr)
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
-	return s.FindCerts(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob))
+	return s.findCerts(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob))
+}
+
+// FindBySubjectID returns slice of certificates that match given subject key id. If
+// id supplied could not be decoded from string, FindBySubjectID will
+// return nil slice
+func (s CertStore) FindBySubjectID(thumb string) []Cert {
+	bThumb, err := hex.DecodeString(thumb)
+	if err != nil {
+		return nil
+	}
+	var hashBlob C.CRYPT_HASH_BLOB
+	hashBlob.cbData = C.DWORD(len(bThumb))
+	bThumbPtr := C.CBytes(bThumb)
+	defer C.free(bThumbPtr)
+	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
+	return s.findCerts(C.CERT_FIND_KEY_IDENTIFIER, unsafe.Pointer(&hashBlob))
 }
 
 // GetByThumb returns first certificate in store that match given thumbprint
@@ -135,6 +151,24 @@ func (s CertStore) GetByThumb(thumb string) (res Cert, err error) {
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
 	if res.pCert = s.getCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob)); res.pCert == nil {
 		err = getErr("Error looking up certificate by thumb")
+		return
+	}
+	return
+}
+
+// GetBySubjectID returns first certificate in store that match given subject key ID
+func (s CertStore) GetBySubjectID(keyID string) (res Cert, err error) {
+	bThumb, err := hex.DecodeString(keyID)
+	if err != nil {
+		return
+	}
+	var hashBlob C.CRYPT_HASH_BLOB
+	hashBlob.cbData = C.DWORD(len(bThumb))
+	bThumbPtr := C.CBytes(bThumb)
+	defer C.free(bThumbPtr)
+	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
+	if res.pCert = s.getCert(C.CERT_FIND_KEY_IDENTIFIER, unsafe.Pointer(&hashBlob)); res.pCert == nil {
+		err = getErr("Error looking up certificate by subject key id")
 		return
 	}
 	return
