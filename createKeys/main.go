@@ -20,7 +20,7 @@ func main() {
 			fmt.Println("Certificate already exists")
 			return
 		}
-	} else {
+	} else if err != nil {
 		panic(err)
 	}
 	defer ctx.Close()
