@@ -7,9 +7,9 @@ import "C"
 type KeyFlag C.DWORD
 
 const (
-	KeyArchivable          KeyFlag = C.CRYPT_ARCHIVABLE
-	KeyExportable          KeyFlag = C.CRYPT_EXPORTABLE
-	KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
+	KeyArchivable KeyFlag = C.CRYPT_ARCHIVABLE
+	KeyExportable KeyFlag = C.CRYPT_EXPORTABLE
+	//KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
 )
 
 // KeyPairId selects public/private key pair from CSP container

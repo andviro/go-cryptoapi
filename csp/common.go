@@ -23,13 +23,13 @@ type ErrorCode C.DWORD
 
 // Some C error codes translated to Go constants
 const (
-	ErrBadKeysetParam   ErrorCode = C.NTE_BAD_KEYSET_PARAM & (1<<32 - 1)  // Typically occurs when trying to acquire context
-	ErrFail             ErrorCode = C.NTE_FAIL & (1<<32 - 1)              // Misc error
-	ErrInvalidParameter ErrorCode = C.NTE_INVALID_PARAMETER & (1<<32 - 1) // Bad parameter to cryptographic function
-	ErrNoKey            ErrorCode = C.NTE_NO_KEY & (1<<32 - 1)            // Key not found
-	ErrExists           ErrorCode = C.NTE_EXISTS & (1<<32 - 1)            // Object already exists
-	ErrNotFound         ErrorCode = C.NTE_NOT_FOUND & (1<<32 - 1)         // Object not found
-	ErrKeysetNotDef     ErrorCode = C.NTE_KEYSET_NOT_DEF & (1<<32 - 1)    // Operation on unknown container
+	ErrBadKeysetParam ErrorCode = C.NTE_BAD_KEYSET_PARAM & (1<<32 - 1) // Typically occurs when trying to acquire context
+	ErrFail           ErrorCode = C.NTE_FAIL & (1<<32 - 1)             // Misc error
+	//ErrInvalidParameter ErrorCode = C.NTE_INVALID_PARAMETER & (1<<32 - 1) // Bad parameter to cryptographic function
+	ErrNoKey        ErrorCode = C.NTE_NO_KEY & (1<<32 - 1)         // Key not found
+	ErrExists       ErrorCode = C.NTE_EXISTS & (1<<32 - 1)         // Object already exists
+	ErrNotFound     ErrorCode = C.NTE_NOT_FOUND & (1<<32 - 1)      // Object not found
+	ErrKeysetNotDef ErrorCode = C.NTE_KEYSET_NOT_DEF & (1<<32 - 1) // Operation on unknown container
 )
 
 // CSP Error type. Code field indicates exact CryptoAPI error code

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
+#   define BOOL WINBOOL 
 #   include <windows.h>
 #   include <winsock.h>
 #   include <wincrypt.h>
@@ -16,6 +17,7 @@
 #   include <sspi.h>
 #   define IS_SOCKET_ERROR(a) (a==SOCKET_ERROR)
 #   include <WinCryptEx.h>
+#   include <winerror.h>
 #else
 #   include <stdint.h>
 #   include "CSP_WinDef.h"
