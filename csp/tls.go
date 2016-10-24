@@ -103,6 +103,9 @@ import (
 	"fmt"
 	"net"
 	"unsafe"
+
+	"github.com/andviro/go-state"
+	"golang.org/x/net/context"
 )
 
 const TlsBufferSize = 8192
@@ -115,6 +118,11 @@ type Conn struct {
 	targetName *C.char
 	attrs      C.ULONG
 	expires    C.TimeStamp
+
+	lastError error
+	outBuffer C.SecBufferDesc
+	buf       []byte
+	numRead   int
 }
 
 // Credentials wraps security context credentials
@@ -151,97 +159,96 @@ func NewCredentials() (res *Credentials, err error) {
 }
 
 func (c *Conn) clientHandshake() error {
-	var (
-		OutBuffer C.SecBufferDesc
-	)
-	C.AllocateBuffers(&OutBuffer, 1)
-	defer C.FreeBuffers(&OutBuffer)
+	C.AllocateBuffers(&c.outBuffer, 1)
+	defer C.FreeBuffers(&c.outBuffer)
 
-	out0 := C.GetBuffer(&OutBuffer, 0)
+	C.AllocateBuffers(&c.inBuffer, 2)
+	defer C.FreeBuffers(&c.inBuffer)
+
+	c.buf = make([]byte, TlsBufferSize)
+	c.numRead = 0
+}
+
+func (c *Conn) startHandshake(ctx context.Context) state.Func {
+	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
 	out0.cbBuffer = 0
 
-	if stat := C.InitializeSecurityContext_wrap(
+	stat := C.InitializeSecurityContext_wrap(
 		&c.creds.hClientCreds,
 		nil,
 		c.targetName,
 		nil,
 		&c.hContext,
-		&OutBuffer,
+		&c.outBuffer,
 		&c.attrs,
 		&c.expires,
-	); stat != C.SEC_I_CONTINUE_NEEDED {
-		return fmt.Errorf("Error initializing security context: %x", stat)
+	)
+	if stat != C.SEC_I_CONTINUE_NEEDED {
+		c.lastError = fmt.Errorf("Error initializing security context: %x", stat)
+		return nil
 	}
+	return c.sendToken
+}
+
+func (c *Conn) sendToken(ctx context.Context) state.Func {
+	out0 := C.GetBuffer(&c.outBuffer, 0)
 	defer C.FreeContextBuffer_wrap(out0.pvBuffer)
 
 	n, err := c.conn.Write(C.GoBytes(out0.pvBuffer, C.int(out0.cbBuffer)))
 	if err != nil {
-		return err
+		c.lastError = fmt.Errorf("Error sending token: %v", err)
+		return nil
 	}
 	if n == 0 {
-		return fmt.Errorf("Could not send handshake data")
+		c.lastError = fmt.Errorf("Error sending token: 0 bytes sent")
+		return nil
 	}
 
-	return c.mainHandshakeLoop(true)
+	return c.readServerResponse
 }
 
-func (c *Conn) mainHandshakeLoop(doRead bool) error {
-	var (
-		buf                 = make([]byte, TlsBufferSize)
-		numRead              int
-		InBuffer, OutBuffer C.SecBufferDesc
-	)
-	C.AllocateBuffers(&OutBuffer, 1)
-	defer C.FreeBuffers(&OutBuffer)
-	out0 := C.GetBuffer(&OutBuffer, 0)
+func (c *Conn) readServerResponse(ctx context.Context) error {
 
-	C.AllocateBuffers(&InBuffer, 2)
-	defer C.FreeBuffers(&InBuffer)
+	out0 := C.GetBuffer(&OutBuffer, 0)
 	in0 := C.GetBuffer(&InBuffer, 0)
 	in1 := C.GetBuffer(&InBuffer, 1)
 
-	for stat := C.SECURITY_STATUS(C.SEC_I_CONTINUE_NEEDED); stat == C.SEC_I_CONTINUE_NEEDED || stat == C.SEC_E_INCOMPLETE_MESSAGE || stat == C.SEC_I_INCOMPLETE_CREDENTIALS; {
-		if err := func() error {
-			if doRead {
-				n, err := c.conn.Read(buf[numRead:])
-				if err != nil {
-					return err
-				}
-				numRead += n
-			} else {
-				doRead = true
-			}
-
-			in0.pvBuffer = unsafe.Pointer(&buf[0])
-			in0.cbBuffer = C.uint(numRead)
-			in0.BufferType = C.SECBUFFER_TOKEN
-
-			in1.pvBuffer = nil
-			in1.cbBuffer = 0
-			in1.BufferType = C.SECBUFFER_EMPTY
-
-			out0.pvBuffer = nil
-			out0.BufferType = C.SECBUFFER_TOKEN
-			out0.cbBuffer = 0
-
-			stat = C.InitializeSecurityContext_wrap(
-				&c.creds.hClientCreds,
-				nil,
-				c.targetName,
-				&InBuffer,
-				&c.hContext,
-				&OutBuffer,
-				&c.attrs,
-				&c.expires,
-			)
-			defer C.FreeContextBuffer_wrap(out0.pvBuffer)
-			return nil
-		}(); err != nil {
-			return err
-		}
+	n, err := c.conn.Read(buf[c.numRead:])
+	if err != nil {
+		c.lastError = fmt.Errorf("Error reading handshake response: %v", err)
+		return nil
 	}
+	if n == 0 {
+		c.lastError = fmt.Errorf("Error reading handshake response: 0 bytes read")
+		return nil
+	}
+
+	c.numRead += n
+
+	in0.pvBuffer = unsafe.Pointer(&buf[0])
+	in0.cbBuffer = C.uint(numRead)
+	in0.BufferType = C.SECBUFFER_TOKEN
+
+	in1.pvBuffer = nil
+	in1.cbBuffer = 0
+	in1.BufferType = C.SECBUFFER_EMPTY
+
+	out0.pvBuffer = nil
+	out0.BufferType = C.SECBUFFER_TOKEN
+	out0.cbBuffer = 0
+
+	stat := C.InitializeSecurityContext_wrap(
+		&c.creds.hClientCreds,
+		nil,
+		c.targetName,
+		&InBuffer,
+		&c.hContext,
+		&OutBuffer,
+		&c.attrs,
+		&c.expires,
+	)
 
 	return nil
 }
