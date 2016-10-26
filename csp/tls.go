@@ -74,11 +74,26 @@ static SECURITY_STATUS InitializeSecurityContext_wrap(
 		| ISC_REQ_ALLOCATE_MEMORY
 		| ISC_REQ_STREAM;
 
-	return g_pSSPI->InitializeSecurityContextA( phCredential, phContext, pszTargetName, fContextReq, 0, SECURITY_NATIVE_DREP, pInput, 0, phNewContext, pOutput, pfContextAttr, ptsExpiry);
+	return g_pSSPI->InitializeSecurityContextA(
+		phCredential,
+		phContext,
+		pszTargetName,
+		fContextReq,
+		0,
+		SECURITY_NATIVE_DREP,
+		pInput,
+		0,
+		phNewContext,
+		pOutput,
+		pfContextAttr,
+		ptsExpiry
+	);
 };
 
-static SECURITY_STATUS FreeContextBuffer_wrap(void *pvContextBuffer) {
-	return g_pSSPI->FreeContextBuffer(pvContextBuffer);
+static SECURITY_STATUS FreeContextBuffer_wrap(SecBuffer *buf) {
+	SECURITY_STATUS res = g_pSSPI->FreeContextBuffer(buf->pvBuffer);
+	buf->pvBuffer = NULL;
+	return res;
 }
             //g_pSSPI->DeleteSecurityContext(phContext);
 
@@ -166,11 +181,15 @@ func (c *Conn) clientHandshake() (err error) {
 	C.AllocateBuffers(&c.inBuffer, 2)
 	defer C.FreeBuffers(&c.inBuffer)
 
+	c.targetName = C.CString("www.cryptopro.ru")
+	defer C.free(unsafe.Pointer(c.targetName))
+
 	if c.buf == nil {
 		c.buf = make([]byte, TlsBufferSize)
 	}
 	c.numRead = 0
-	if err = state.Run(nil, c.startHandshake); err != nil {
+	fmt.Println("handshake")
+	if err = state.Run(context.Background(), c.startHandshake); err != nil {
 		return
 	}
 	return c.lastError
@@ -178,6 +197,12 @@ func (c *Conn) clientHandshake() (err error) {
 
 func (c *Conn) writeToken() error {
 	out0 := C.GetBuffer(&c.outBuffer, 0)
+	if out0.cbBuffer == 0 || out0.pvBuffer == nil {
+		fmt.Println("empty out buffer")
+		return nil
+	}
+
+	fmt.Printf("writeToken: %d bytes\n", out0.cbBuffer)
 	n, err := c.conn.Write(C.GoBytes(out0.pvBuffer, C.int(out0.cbBuffer)))
 	if err != nil {
 		return fmt.Errorf("Error sending token: %v", err)
@@ -185,10 +210,12 @@ func (c *Conn) writeToken() error {
 	if n == 0 {
 		return fmt.Errorf("Error sending token: 0 bytes sent")
 	}
+	fmt.Println(n, "bytes written")
 	return nil
 }
 
 func (c *Conn) startHandshake(ctx context.Context) state.Func {
+	fmt.Println("startHandshake")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
@@ -214,7 +241,7 @@ func (c *Conn) startHandshake(ctx context.Context) state.Func {
 		&c.attrs,
 		&c.expires,
 	)
-	defer C.FreeContextBuffer_wrap(out0.pvBuffer)
+	defer C.FreeContextBuffer_wrap(out0)
 
 	if stat != C.SEC_I_CONTINUE_NEEDED {
 		c.lastError = fmt.Errorf("Error initializing security context: %x", stat)
@@ -228,6 +255,7 @@ func (c *Conn) startHandshake(ctx context.Context) state.Func {
 
 func (c *Conn) readServerToken(ctx context.Context) state.Func {
 
+	fmt.Println("readServerToken")
 	n, err := c.conn.Read(c.buf[c.numRead:])
 	if err != nil {
 		c.lastError = fmt.Errorf("Error reading handshake response: %v", err)
@@ -237,13 +265,18 @@ func (c *Conn) readServerToken(ctx context.Context) state.Func {
 		c.lastError = fmt.Errorf("Error reading handshake response: 0 bytes read")
 		return nil
 	}
-
+	fmt.Println(n, "bytes read")
 	c.numRead += n
+	fmt.Println(len(c.buf[:c.numRead]), "buffer length")
+
 	return c.processServerToken
 }
 
 func (c *Conn) processServerToken(ctx context.Context) state.Func {
+	fmt.Println("processServerToken")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
+	in0 := C.GetBuffer(&c.inBuffer, 0)
+	in0.cbBuffer = C.uint(c.numRead)
 	in1 := C.GetBuffer(&c.inBuffer, 1)
 
 	out0.pvBuffer = nil
@@ -252,15 +285,15 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 
 	stat := C.InitializeSecurityContext_wrap(
 		&c.creds.hClientCreds,
-		nil,
+		&c.hContext,
 		c.targetName,
 		&c.inBuffer,
-		&c.hContext,
+		nil,
 		&c.outBuffer,
 		&c.attrs,
 		&c.expires,
 	)
-	defer C.FreeContextBuffer_wrap(out0.pvBuffer)
+	defer C.FreeContextBuffer_wrap(out0)
 
 	if c.lastError = c.writeToken(); c.lastError != nil {
 		return nil
@@ -268,19 +301,33 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 
 	switch stat {
 	case C.SEC_E_INCOMPLETE_MESSAGE:
+		fmt.Println("incomplete")
 		return c.readServerToken
 	case C.SEC_I_CONTINUE_NEEDED:
+		fmt.Println("continue")
 		if in1.BufferType == C.SECBUFFER_EXTRA {
+			fmt.Println("extra")
+			fmt.Printf("%v\n", c.buf[c.numRead-int(in1.cbBuffer):c.numRead])
 			copy(c.buf, c.buf[c.numRead-int(in1.cbBuffer):c.numRead])
 			c.numRead = int(in1.cbBuffer)
+			return c.processServerToken
 		} else {
+			fmt.Println("no extra")
 			c.numRead = 0
+			return c.readServerToken
 		}
-		return c.processServerToken
 	case C.SEC_E_OK:
+		fmt.Println("ok")
 		if in1.BufferType == C.SECBUFFER_EXTRA {
 			c.handshakeExtra = c.buf[c.numRead-int(in1.cbBuffer) : c.numRead]
 		}
+		return nil
+	case C.SEC_I_INCOMPLETE_CREDENTIALS:
+		fmt.Println("credentials")
+		c.lastError = fmt.Errorf("Handshake: invalid credentials")
+		return nil
+	default:
+		c.lastError = fmt.Errorf("Handshake failed with code %x", stat)
 		return nil
 	}
 
@@ -294,6 +341,7 @@ func Client(conn net.Conn) (res *Conn, err error) {
 	if res.creds, err = NewCredentials(); err != nil {
 		return
 	}
+	err = res.clientHandshake()
 
 	return
 }
