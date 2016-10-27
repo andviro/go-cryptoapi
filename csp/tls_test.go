@@ -1,7 +1,9 @@
 package csp
 
 import (
+	//"io/ioutil"
 	"net"
+	//"net/http"
 	"testing"
 )
 
@@ -17,7 +19,7 @@ func TestClient(t *testing.T) {
 	}
 	defer store.Close()
 
-	crt, err := store.GetBySubjectId("ce9c137415ffa8679f51ff3996dc8762432bc6ba")
+	crt, err := store.GetBySubjectId("4370ccf78043a2c9cb0016802c410e1789168774")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +30,48 @@ func TestClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = tlsConn.Handshake()
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = tlsConn.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
+//func TestReadWrite(t *testing.T) {
+//tr := &http.Transport{
+//Dial: func(network, addr string) (res net.Conn, err error) {
+//conn, err := net.Dial(network, addr)
+//if err != nil {
+//return
+//}
+//store, err := SystemStore("MY")
+//if err != nil {
+//return
+//}
+//defer store.Close()
+
+//crt, err := store.GetBySubjectId("4370ccf78043a2c9cb0016802c410e1789168774")
+//if err != nil {
+//return
+//}
+//return Client(conn, Config{
+//ServerName:   "www.cryptopro.ru",
+//Certificates: []Cert{crt},
+//})
+//},
+//}
+//client := &http.Client{Transport: tr}
+//resp, err := client.Get("http://www.cryptopro.ru:4444")
+//if err != nil {
+//t.Fatal(err)
+//}
+//defer resp.Body.Close()
+//data, err := ioutil.ReadAll(resp.Body)
+//t.Log(string(data))
+//if err != nil {
+//t.Fatal(err)
+//}
+//}

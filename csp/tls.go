@@ -62,6 +62,18 @@ static SECURITY_STATUS DeleteSecurityContext_wrap(PCtxtHandle phContext) {
 	return g_pSSPI->DeleteSecurityContext(phContext);
 }
 
+static SECURITY_STATUS  EncryptMessage_wrap(PCtxtHandle    phContext, PSecBufferDesc pMessage) {
+	return g_pSSPI->EncryptMessage(phContext, 0, pMessage, 0);
+}
+
+static SECURITY_STATUS QueryContextAttributes_wrap(PCtxtHandle phContext, ulong ulAttribute, PVOID pBuffer) {
+    return g_pSSPI->QueryContextAttributes(phContext, ulAttribute, pBuffer);
+}
+
+static SECURITY_STATUS DecryptMessage_wrap( PCtxtHandle    phContext, PSecBufferDesc pMessage) {
+	return g_pSSPI->DecryptMessage(phContext, pMessage, 0, NULL);
+}
+
 static SECURITY_STATUS InitializeSecurityContext_wrap(
   PCredHandle    phCredential,
   PCtxtHandle    phContext,
@@ -138,18 +150,21 @@ const TlsBufferSize = 8192
 
 // Conn encapsulates TLS connection implementing net.Conn interface
 type Conn struct {
-	conn       net.Conn
-	creds      *credentials
-	hContext   C.CtxtHandle
-	targetName *C.char
-	attrs      C.ULONG
-	expires    C.TimeStamp
+	conn net.Conn
+	cfg  Config
 
-	lastError           error
-	inBuffer, outBuffer C.SecBufferDesc
-	buf                 []byte
-	handshakeExtra      []byte
-	numRead             int
+	creds                                  *credentials
+	hContext                               C.CtxtHandle
+	targetName                             *C.char
+	attrs                                  C.ULONG
+	sizes                                  C.SecPkgContext_StreamSizes
+	expires                                C.TimeStamp
+	handshakeCompleted                     bool
+	lastError                              error
+	inBuffer, outBuffer, writeMsg, readMsg C.SecBufferDesc
+	buf, writeBuf, readBuf, decryptedData  []byte
+	extraData                              []byte
+	numRead                                int
 }
 
 type Config struct {
@@ -190,27 +205,10 @@ func newCredentials(certs []Cert) (res *credentials, err error) {
 		}
 	}
 	if stat := C.AcquireCredentialsHandle_wrap(&res.schannelCred, &res.hClientCreds, &res.expires); stat != C.SEC_E_OK {
-		err = fmt.Errorf("Error acquiring credentials handle: %x", stat)
+		err = fmt.Errorf("Error acquiring credentials handle: %x", uint32(stat))
 		return
 	}
 	return
-}
-
-func (c *Conn) clientHandshake() (err error) {
-	C.AllocateBuffers(&c.outBuffer, 1)
-	defer C.FreeBuffers(&c.outBuffer)
-
-	C.AllocateBuffers(&c.inBuffer, 2)
-	defer C.FreeBuffers(&c.inBuffer)
-
-	if c.buf == nil {
-		c.buf = make([]byte, TlsBufferSize)
-	}
-	c.numRead = 0
-	if err = state.Run(context.Background(), c.startHandshake); err != nil {
-		return
-	}
-	return c.lastError
 }
 
 func (c *Conn) writeToken() error {
@@ -230,6 +228,7 @@ func (c *Conn) writeToken() error {
 }
 
 func (c *Conn) startHandshake(ctx context.Context) state.Func {
+	fmt.Println("startHandshake")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
@@ -258,7 +257,7 @@ func (c *Conn) startHandshake(ctx context.Context) state.Func {
 	defer C.FreeContextBuffer_wrap(out0)
 
 	if stat != C.SEC_I_CONTINUE_NEEDED {
-		c.lastError = fmt.Errorf("Error initializing security context: %x", stat)
+		c.lastError = fmt.Errorf("Error initializing security context: %x", uint32(stat))
 		return nil
 	}
 	if c.lastError = c.writeToken(); c.lastError != nil {
@@ -268,7 +267,7 @@ func (c *Conn) startHandshake(ctx context.Context) state.Func {
 }
 
 func (c *Conn) readServerToken(ctx context.Context) state.Func {
-
+	fmt.Println("readServerToken")
 	n, err := c.conn.Read(c.buf[c.numRead:])
 	if err != nil {
 		c.lastError = fmt.Errorf("Error reading handshake response: %v", err)
@@ -284,6 +283,7 @@ func (c *Conn) readServerToken(ctx context.Context) state.Func {
 }
 
 func (c *Conn) processServerToken(ctx context.Context) state.Func {
+	fmt.Println("processServerToken")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
@@ -306,13 +306,16 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 	defer C.FreeContextBuffer_wrap(out0)
 
 	if c.lastError = c.writeToken(); c.lastError != nil {
+		fmt.Println("processServerToken: error ", c.lastError)
 		return nil
 	}
 
 	switch stat {
 	case C.SEC_E_INCOMPLETE_MESSAGE:
+		fmt.Println("processServerToken: incomplete")
 		return c.readServerToken
 	case C.SEC_I_CONTINUE_NEEDED:
+		fmt.Println("processServerToken: continue")
 		if in1.BufferType == C.SECBUFFER_EXTRA {
 			copy(c.buf, c.buf[c.numRead-int(in1.cbBuffer):c.numRead])
 			c.numRead = int(in1.cbBuffer)
@@ -323,30 +326,178 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 		}
 	case C.SEC_E_OK:
 		if in1.BufferType == C.SECBUFFER_EXTRA {
-			c.handshakeExtra = c.buf[c.numRead-int(in1.cbBuffer) : c.numRead]
+			fmt.Println("processServerToken: extra")
+			c.extraData = c.buf[c.numRead-int(in1.cbBuffer) : c.numRead]
 		}
 		return nil
 	case C.SEC_I_INCOMPLETE_CREDENTIALS:
+		fmt.Println("processServerToken: credentials")
 		c.lastError = fmt.Errorf("Handshake: incomplete credentials")
 		return nil
 	default:
-		c.lastError = fmt.Errorf("Handshake failed with code %x", stat)
+		fmt.Println("processServerToken: fail")
+		c.lastError = fmt.Errorf("Handshake failed with code %x", uint32(stat))
 		return nil
 	}
 
 	return nil
 }
 
+func (c *Conn) Handshake() (err error) {
+	fmt.Println("Handshake")
+	if c.handshakeCompleted {
+		return nil
+	}
+	C.AllocateBuffers(&c.outBuffer, 1)
+	defer C.FreeBuffers(&c.outBuffer)
+
+	C.AllocateBuffers(&c.inBuffer, 2)
+	defer C.FreeBuffers(&c.inBuffer)
+
+	if c.buf == nil {
+		c.buf = make([]byte, TlsBufferSize)
+	}
+	c.numRead = 0
+	if err = state.Run(context.Background(), c.startHandshake); err != nil {
+		return
+	}
+	if c.lastError != nil {
+		err = c.lastError
+		return
+	}
+
+	if stat := C.QueryContextAttributes_wrap(&c.hContext, C.SECPKG_ATTR_STREAM_SIZES, &c.sizes); stat != C.SEC_E_OK {
+		err = fmt.Errorf("QueryContextAttributes result: %x", uint32(stat))
+		return
+	}
+	bufLen := int(c.sizes.cbHeader + c.sizes.cbTrailer + c.sizes.cbMaximumMessage + 2048)
+	c.writeBuf = make([]byte, bufLen)
+	c.readBuf = make([]byte, bufLen)
+	C.AllocateBuffers(&c.writeMsg, 4)
+	C.AllocateBuffers(&c.readMsg, 4)
+
+	c.numRead = 0
+	c.handshakeCompleted = true
+	return
+}
+
+func (c *Conn) Write(data []byte) (n int, err error) {
+	fmt.Println("Write", len(data))
+	if err = c.Handshake(); err != nil {
+		return
+	}
+	buf0 := C.GetBuffer(&c.writeMsg, 0)
+	buf0.pvBuffer = unsafe.Pointer(&c.writeBuf[0])
+	buf0.cbBuffer = C.uint(c.sizes.cbHeader)
+	buf0.BufferType = C.SECBUFFER_STREAM_HEADER
+
+	buf1 := C.GetBuffer(&c.writeMsg, 1)
+	buf2 := C.GetBuffer(&c.writeMsg, 2)
+	buf3 := C.GetBuffer(&c.writeMsg, 3)
+
+	for len(data) > 0 {
+		cbMessage := copy(c.writeBuf[int(c.sizes.cbHeader):int(c.sizes.cbHeader+c.sizes.cbMaximumMessage)], data)
+
+		buf1.pvBuffer = unsafe.Pointer(&c.writeBuf[int(c.sizes.cbHeader)])
+		buf1.cbBuffer = C.uint(cbMessage)
+		buf1.BufferType = C.SECBUFFER_DATA
+
+		buf2.pvBuffer = unsafe.Pointer(&c.writeBuf[int(c.sizes.cbHeader)+cbMessage])
+		buf2.cbBuffer = C.uint(c.sizes.cbTrailer)
+		buf2.BufferType = C.SECBUFFER_STREAM_TRAILER
+
+		buf3.BufferType = C.SECBUFFER_EMPTY
+		if stat := C.EncryptMessage_wrap(&c.hContext, &c.writeMsg); stat != C.SEC_E_OK {
+			err = fmt.Errorf("Error encrypting message: %x", uint32(stat))
+			return
+		}
+		if _, err = c.conn.Write(c.writeBuf[:int(c.sizes.cbHeader+c.sizes.cbTrailer)+cbMessage]); err != nil {
+			return
+		}
+		n += cbMessage
+		data = data[cbMessage:]
+	}
+	return
+}
+
+func (c *Conn) Read(b []byte) (n int, err error) {
+	fmt.Println("Read", len(b))
+	if err = c.Handshake(); err != nil || len(b) == 0 {
+		return
+	}
+
+	if len(c.decryptedData) == 0 {
+		buf0 := C.GetBuffer(&c.readMsg, 0)
+		buf1 := C.GetBuffer(&c.readMsg, 1)
+		buf2 := C.GetBuffer(&c.readMsg, 2)
+		buf3 := C.GetBuffer(&c.readMsg, 3)
+	loop:
+		for {
+			if c.extraData != nil {
+				if copy(c.readBuf[c.numRead:], c.extraData) < len(c.extraData) {
+					err = fmt.Errorf("Read encrypted: extra data size is too big to read")
+					return
+				}
+				c.extraData = nil
+			} else {
+				var numRead int
+				if numRead, err = c.conn.Read(c.readBuf[c.numRead:]); err != nil {
+					return
+				} else {
+					c.numRead += numRead
+				}
+			}
+			buf0.pvBuffer = unsafe.Pointer(&c.readBuf[0])
+			buf0.cbBuffer = C.uint(c.numRead)
+			buf0.BufferType = C.SECBUFFER_DATA
+			buf1.BufferType = C.SECBUFFER_EMPTY
+			buf2.BufferType = C.SECBUFFER_EMPTY
+			buf3.BufferType = C.SECBUFFER_EMPTY
+
+			stat := C.DecryptMessage_wrap(&c.hContext, &c.readMsg)
+			switch stat {
+			case C.SEC_E_INCOMPLETE_MESSAGE:
+				continue loop
+			case C.SEC_E_OK:
+				c.numRead = 0
+				for i := 1; i < 4; i++ {
+					buf := C.GetBuffer(&c.readMsg, C.int(i))
+					switch buf.BufferType {
+					case C.SECBUFFER_EXTRA:
+						c.extraData = C.GoBytes(buf.pvBuffer, C.int(buf.cbBuffer))
+					case C.SECBUFFER_DATA:
+						c.decryptedData = C.GoBytes(buf.pvBuffer, C.int(buf.cbBuffer))
+					}
+				}
+				break loop
+			default:
+				err = fmt.Errorf("Error decrypting data %x", uint32(stat))
+			}
+		}
+		n = copy(b, c.decryptedData)
+		c.decryptedData = c.decryptedData[n:]
+		return
+	}
+
+	return
+}
+
 func (c *Conn) Close() error {
+	fmt.Println("Close")
 	defer C.free(unsafe.Pointer(c.targetName))
+	defer C.FreeBuffers(&c.writeMsg)
+	defer C.FreeBuffers(&c.readMsg)
+
 	if c.creds != nil && c.creds.schannelCred.paCred != nil {
 		defer C.free(unsafe.Pointer(c.creds.schannelCred.paCred))
 	}
-	if stat := C.DeleteSecurityContext_wrap(&c.hContext); stat != 0 {
-		return fmt.Errorf("DeleteSecurityContext failed with code %x", stat)
+	if c.handshakeCompleted {
+		if stat := C.DeleteSecurityContext_wrap(&c.hContext); stat != 0 {
+			return fmt.Errorf("DeleteSecurityContext failed with code %x", uint32(stat))
+		}
 	}
 	if stat := C.FreeCredentialsHandle_wrap(&c.creds.hClientCreds); stat != 0 {
-		return fmt.Errorf("FreeCredentialsHandle failed with code %x", stat)
+		return fmt.Errorf("FreeCredentialsHandle failed with code %x", uint32(stat))
 	}
 	return c.conn.Close()
 }
@@ -359,7 +510,5 @@ func Client(conn net.Conn, config Config) (res *Conn, err error) {
 	if res.creds, err = newCredentials(config.Certificates); err != nil {
 		return
 	}
-	err = res.clientHandshake()
-
 	return
 }
