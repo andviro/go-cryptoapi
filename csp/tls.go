@@ -116,7 +116,7 @@ static SECURITY_STATUS FreeContextBuffer_wrap(SecBuffer *buf) {
             //g_pSSPI->DeleteSecurityContext(phContext);
 
 static void AllocateBuffers(SecBufferDesc *buf, int n) {
-    buf->cBuffers = 1;
+    buf->cBuffers = n;
     buf->pBuffers = malloc(n * sizeof(SecBuffer));
     buf->ulVersion = SECBUFFER_VERSION;
 }
@@ -140,6 +140,7 @@ import "C"
 import (
 	"fmt"
 	"net"
+	"sync"
 	"unsafe"
 
 	"github.com/andviro/go-state"
@@ -153,11 +154,12 @@ type Conn struct {
 	conn net.Conn
 	cfg  Config
 
+	hMu, rMu, wMu                          sync.Mutex
 	creds                                  *credentials
 	hContext                               C.CtxtHandle
 	targetName                             *C.char
 	attrs                                  C.ULONG
-	sizes                                  C.SecPkgContext_StreamSizes
+	sizes                                  *C.SecPkgContext_StreamSizes
 	expires                                C.TimeStamp
 	handshakeCompleted                     bool
 	lastError                              error
@@ -344,8 +346,12 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 }
 
 func (c *Conn) Handshake() (err error) {
+	c.hMu.Lock()
+	defer c.hMu.Unlock()
+
 	fmt.Println("Handshake")
 	if c.handshakeCompleted {
+		fmt.Println("Handshake already completed")
 		return nil
 	}
 	C.AllocateBuffers(&c.outBuffer, 1)
@@ -365,8 +371,10 @@ func (c *Conn) Handshake() (err error) {
 		err = c.lastError
 		return
 	}
+	fmt.Println("Handshake completed")
 
-	if stat := C.QueryContextAttributes_wrap(&c.hContext, C.SECPKG_ATTR_STREAM_SIZES, &c.sizes); stat != C.SEC_E_OK {
+	c.sizes = (*C.SecPkgContext_StreamSizes)(C.malloc(C.sizeof_SecPkgContext_StreamSizes))
+	if stat := C.QueryContextAttributes_wrap(&c.hContext, C.SECPKG_ATTR_STREAM_SIZES, c.sizes); stat != C.SEC_E_OK {
 		err = fmt.Errorf("QueryContextAttributes result: %x", uint32(stat))
 		return
 	}
@@ -378,6 +386,7 @@ func (c *Conn) Handshake() (err error) {
 
 	c.numRead = 0
 	c.handshakeCompleted = true
+	fmt.Println("buffers allocated")
 	return
 }
 
@@ -386,6 +395,12 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 	if err = c.Handshake(); err != nil {
 		return
 	}
+
+	fmt.Println("locking write")
+	c.wMu.Lock()
+	defer c.wMu.Unlock()
+	fmt.Println("locked write")
+
 	buf0 := C.GetBuffer(&c.writeMsg, 0)
 	buf0.pvBuffer = unsafe.Pointer(&c.writeBuf[0])
 	buf0.cbBuffer = C.uint(c.sizes.cbHeader)
@@ -411,8 +426,11 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 			err = fmt.Errorf("Error encrypting message: %x", uint32(stat))
 			return
 		}
-		if _, err = c.conn.Write(c.writeBuf[:int(c.sizes.cbHeader+c.sizes.cbTrailer)+cbMessage]); err != nil {
+		var nSent int
+		if nSent, err = c.conn.Write(c.writeBuf[:int(c.sizes.cbHeader+c.sizes.cbTrailer)+cbMessage]); err != nil {
 			return
+		} else {
+			fmt.Println("Write: sent", nSent, "bytes, plaintext", len(data), "bytes", string(data))
 		}
 		n += cbMessage
 		data = data[cbMessage:]
@@ -421,10 +439,16 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 }
 
 func (c *Conn) Read(b []byte) (n int, err error) {
+
 	fmt.Println("Read", len(b))
 	if err = c.Handshake(); err != nil || len(b) == 0 {
 		return
 	}
+
+	fmt.Println("locking read")
+	c.rMu.Lock()
+	defer c.rMu.Unlock()
+	fmt.Println("locked read")
 
 	if len(c.decryptedData) == 0 {
 		buf0 := C.GetBuffer(&c.readMsg, 0)
@@ -433,23 +457,27 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 		buf3 := C.GetBuffer(&c.readMsg, 3)
 	loop:
 		for {
-			if c.extraData != nil {
+			if len(c.extraData) > 0 {
 				if copy(c.readBuf[c.numRead:], c.extraData) < len(c.extraData) {
 					err = fmt.Errorf("Read encrypted: extra data size is too big to read")
 					return
 				}
+				c.numRead += len(c.extraData)
 				c.extraData = nil
 			} else {
 				var numRead int
 				if numRead, err = c.conn.Read(c.readBuf[c.numRead:]); err != nil {
 					return
 				} else {
+					fmt.Println("Read: received", numRead, "bytes")
 					c.numRead += numRead
+					fmt.Printf("Read: %x\n", c.readBuf[:c.numRead])
 				}
 			}
 			buf0.pvBuffer = unsafe.Pointer(&c.readBuf[0])
 			buf0.cbBuffer = C.uint(c.numRead)
 			buf0.BufferType = C.SECBUFFER_DATA
+
 			buf1.BufferType = C.SECBUFFER_EMPTY
 			buf2.BufferType = C.SECBUFFER_EMPTY
 			buf3.BufferType = C.SECBUFFER_EMPTY
@@ -457,8 +485,10 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 			stat := C.DecryptMessage_wrap(&c.hContext, &c.readMsg)
 			switch stat {
 			case C.SEC_E_INCOMPLETE_MESSAGE:
+				fmt.Println("Read: incomplete")
 				continue loop
 			case C.SEC_E_OK:
+				fmt.Println("Read: ok")
 				c.numRead = 0
 				for i := 1; i < 4; i++ {
 					buf := C.GetBuffer(&c.readMsg, C.int(i))
@@ -470,8 +500,17 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 					}
 				}
 				break loop
+			case C.SEC_I_RENEGOTIATE:
+				c.numRead = 0
+				err = c.Handshake()
+				if err != nil {
+					return
+				}
+				continue
 			default:
+				fmt.Println("Read: unknown code")
 				err = fmt.Errorf("Error decrypting data %x", uint32(stat))
+				return
 			}
 		}
 		n = copy(b, c.decryptedData)
@@ -492,6 +531,7 @@ func (c *Conn) Close() error {
 		defer C.free(unsafe.Pointer(c.creds.schannelCred.paCred))
 	}
 	if c.handshakeCompleted {
+		defer C.free(unsafe.Pointer(c.sizes))
 		if stat := C.DeleteSecurityContext_wrap(&c.hContext); stat != 0 {
 			return fmt.Errorf("DeleteSecurityContext failed with code %x", uint32(stat))
 		}
