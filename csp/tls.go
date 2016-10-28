@@ -54,6 +54,18 @@ static SECURITY_STATUS AcquireCredentialsHandle_wrap(PVOID pAuthData, PCredHandl
                         ptsExpiry);             // (out) Lifetime (optional)
 }
 
+
+static SECURITY_STATUS ApplyControlToken_wrap(PCtxtHandle phContext, PSecBufferDesc pInput) {
+    DWORD dwType = SCHANNEL_SHUTDOWN;
+
+    pInput->pBuffers[0].pvBuffer   = &dwType;
+    pInput->pBuffers[0].BufferType = SECBUFFER_TOKEN;
+    pInput->pBuffers[0].cbBuffer   = sizeof(dwType);
+
+    return g_pSSPI->ApplyControlToken(phContext, pInput);
+}
+
+
 static SECURITY_STATUS FreeCredentialsHandle_wrap(PCredHandle phCreds) {
 	return g_pSSPI->FreeCredentialsHandle(phCreds);
 }
@@ -521,6 +533,44 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 	return
 }
 
+func (c *Conn) disconnect() (err error) {
+	c.hMu.Lock()
+	defer c.hMu.Unlock()
+
+	fmt.Println("disconnect")
+	stat := C.ApplyControlToken_wrap(&c.hContext, &c.outBuffer)
+	if stat < 0 {
+		return fmt.Errorf("Error applying control token: %x", uint32(stat))
+	}
+
+	out0 := C.GetBuffer(&c.outBuffer, 0)
+	out0.pvBuffer = nil
+	out0.BufferType = C.SECBUFFER_TOKEN
+	out0.cbBuffer = 0
+
+	stat = C.InitializeSecurityContext_wrap(
+		&c.creds.hClientCreds,
+		nil,
+		c.targetName,
+		nil,
+		&c.hContext,
+		&c.outBuffer,
+		&c.attrs,
+		&c.expires,
+	)
+	defer C.FreeContextBuffer_wrap(out0)
+	if stat < 0 {
+		return fmt.Errorf("Error creating disconnect token: %x", uint32(stat))
+	}
+
+	if out0.cbBuffer == 0 || out0.pvBuffer == nil {
+		return nil
+	}
+
+	_, err = c.conn.Write(C.GoBytes(out0.pvBuffer, C.int(out0.cbBuffer)))
+	return
+}
+
 func (c *Conn) Close() error {
 	fmt.Println("Close")
 	defer C.free(unsafe.Pointer(c.targetName))
@@ -532,6 +582,9 @@ func (c *Conn) Close() error {
 	}
 	if c.handshakeCompleted {
 		defer C.free(unsafe.Pointer(c.sizes))
+		if err := c.disconnect(); err != nil {
+			return err
+		}
 		if stat := C.DeleteSecurityContext_wrap(&c.hContext); stat != 0 {
 			return fmt.Errorf("DeleteSecurityContext failed with code %x", uint32(stat))
 		}
