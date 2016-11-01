@@ -1,6 +1,7 @@
 package csp
 
 import (
+	"golang.org/x/net/html/charset"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -69,7 +70,11 @@ func TestReadWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
+	rdr, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := ioutil.ReadAll(rdr)
 	t.Log(string(data))
 	if err != nil {
 		t.Fatal(err)

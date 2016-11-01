@@ -242,7 +242,6 @@ func (c *Conn) writeToken() error {
 }
 
 func (c *Conn) startHandshake(ctx context.Context) state.Func {
-	fmt.Println("startHandshake")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
@@ -281,7 +280,6 @@ func (c *Conn) startHandshake(ctx context.Context) state.Func {
 }
 
 func (c *Conn) readServerToken(ctx context.Context) state.Func {
-	fmt.Println("readServerToken")
 	n, err := c.conn.Read(c.buf[c.numRead:])
 	if err != nil {
 		c.lastError = fmt.Errorf("Error reading handshake response: %v", err)
@@ -297,7 +295,6 @@ func (c *Conn) readServerToken(ctx context.Context) state.Func {
 }
 
 func (c *Conn) processServerToken(ctx context.Context) state.Func {
-	fmt.Println("processServerToken")
 	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
@@ -320,16 +317,13 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 	defer C.FreeContextBuffer_wrap(out0)
 
 	if c.lastError = c.writeToken(); c.lastError != nil {
-		fmt.Println("processServerToken: error ", c.lastError)
 		return nil
 	}
 
 	switch stat {
 	case C.SEC_E_INCOMPLETE_MESSAGE:
-		fmt.Println("processServerToken: incomplete")
 		return c.readServerToken
 	case C.SEC_I_CONTINUE_NEEDED:
-		fmt.Println("processServerToken: continue")
 		if in1.BufferType == C.SECBUFFER_EXTRA {
 			copy(c.buf, c.buf[c.numRead-int(in1.cbBuffer):c.numRead])
 			c.numRead = int(in1.cbBuffer)
@@ -340,16 +334,13 @@ func (c *Conn) processServerToken(ctx context.Context) state.Func {
 		}
 	case C.SEC_E_OK:
 		if in1.BufferType == C.SECBUFFER_EXTRA {
-			fmt.Println("processServerToken: extra")
 			c.extraData = c.buf[c.numRead-int(in1.cbBuffer) : c.numRead]
 		}
 		return nil
 	case C.SEC_I_INCOMPLETE_CREDENTIALS:
-		fmt.Println("processServerToken: credentials")
 		c.lastError = fmt.Errorf("Handshake: incomplete credentials")
 		return nil
 	default:
-		fmt.Println("processServerToken: fail")
 		c.lastError = fmt.Errorf("Handshake failed with code %x", uint32(stat))
 		return nil
 	}
@@ -361,9 +352,7 @@ func (c *Conn) Handshake() (err error) {
 	c.hMu.Lock()
 	defer c.hMu.Unlock()
 
-	fmt.Println("Handshake")
 	if c.handshakeCompleted {
-		fmt.Println("Handshake already completed")
 		return nil
 	}
 	C.AllocateBuffers(&c.outBuffer, 1)
@@ -383,7 +372,6 @@ func (c *Conn) Handshake() (err error) {
 		err = c.lastError
 		return
 	}
-	fmt.Println("Handshake completed")
 
 	c.sizes = (*C.SecPkgContext_StreamSizes)(C.malloc(C.sizeof_SecPkgContext_StreamSizes))
 	if stat := C.QueryContextAttributes_wrap(&c.hContext, C.SECPKG_ATTR_STREAM_SIZES, c.sizes); stat != C.SEC_E_OK {
@@ -398,20 +386,16 @@ func (c *Conn) Handshake() (err error) {
 
 	c.numRead = 0
 	c.handshakeCompleted = true
-	fmt.Println("buffers allocated")
 	return
 }
 
 func (c *Conn) Write(data []byte) (n int, err error) {
-	fmt.Println("Write", len(data))
 	if err = c.Handshake(); err != nil {
 		return
 	}
 
-	fmt.Println("locking write")
 	c.wMu.Lock()
 	defer c.wMu.Unlock()
-	fmt.Println("locked write")
 
 	buf0 := C.GetBuffer(&c.writeMsg, 0)
 	buf0.pvBuffer = unsafe.Pointer(&c.writeBuf[0])
@@ -438,11 +422,8 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 			err = fmt.Errorf("Error encrypting message: %x", uint32(stat))
 			return
 		}
-		var nSent int
-		if nSent, err = c.conn.Write(c.writeBuf[:int(c.sizes.cbHeader+c.sizes.cbTrailer)+cbMessage]); err != nil {
+		if _, err = c.conn.Write(c.writeBuf[:int(c.sizes.cbHeader+c.sizes.cbTrailer)+cbMessage]); err != nil {
 			return
-		} else {
-			fmt.Println("Write: sent", nSent, "bytes, plaintext", len(data), "bytes", string(data))
 		}
 		n += cbMessage
 		data = data[cbMessage:]
@@ -452,15 +433,12 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 
 func (c *Conn) Read(b []byte) (n int, err error) {
 
-	fmt.Println("Read", len(b))
 	if err = c.Handshake(); err != nil || len(b) == 0 {
 		return
 	}
 
-	fmt.Println("locking read")
 	c.rMu.Lock()
 	defer c.rMu.Unlock()
-	fmt.Println("locked read")
 
 	if len(c.decryptedData) == 0 {
 		buf0 := C.GetBuffer(&c.readMsg, 0)
@@ -481,9 +459,7 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 				if numRead, err = c.conn.Read(c.readBuf[c.numRead:]); err != nil {
 					return
 				} else {
-					fmt.Println("Read: received", numRead, "bytes")
 					c.numRead += numRead
-					fmt.Printf("Read: %x\n", c.readBuf[:c.numRead])
 				}
 			}
 			buf0.pvBuffer = unsafe.Pointer(&c.readBuf[0])
@@ -497,10 +473,8 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 			stat := C.DecryptMessage_wrap(&c.hContext, &c.readMsg)
 			switch stat {
 			case C.SEC_E_INCOMPLETE_MESSAGE:
-				fmt.Println("Read: incomplete")
 				continue loop
 			case C.SEC_E_OK:
-				fmt.Println("Read: ok")
 				c.numRead = 0
 				for i := 1; i < 4; i++ {
 					buf := C.GetBuffer(&c.readMsg, C.int(i))
@@ -520,7 +494,6 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 				}
 				continue
 			default:
-				fmt.Println("Read: unknown code")
 				err = fmt.Errorf("Error decrypting data %x", uint32(stat))
 				return
 			}
@@ -537,27 +510,35 @@ func (c *Conn) disconnect() (err error) {
 	c.hMu.Lock()
 	defer c.hMu.Unlock()
 
-	fmt.Println("disconnect")
+	C.AllocateBuffers(&c.outBuffer, 1)
+	defer C.FreeBuffers(&c.outBuffer)
+
+	dwType := C.SCHANNEL_SHUTDOWN
+	out0 := C.GetBuffer(&c.outBuffer, 0)
+	out0.pvBuffer = unsafe.Pointer(&dwType)
+	out0.BufferType = C.SECBUFFER_TOKEN
+	out0.cbBuffer = C.sizeof_DWORD
+
 	stat := C.ApplyControlToken_wrap(&c.hContext, &c.outBuffer)
 	if stat < 0 {
 		return fmt.Errorf("Error applying control token: %x", uint32(stat))
 	}
 
-	out0 := C.GetBuffer(&c.outBuffer, 0)
 	out0.pvBuffer = nil
 	out0.BufferType = C.SECBUFFER_TOKEN
 	out0.cbBuffer = 0
 
 	stat = C.InitializeSecurityContext_wrap(
 		&c.creds.hClientCreds,
-		nil,
-		c.targetName,
-		nil,
 		&c.hContext,
+		nil,
+		nil,
+		nil,
 		&c.outBuffer,
 		&c.attrs,
 		&c.expires,
 	)
+
 	defer C.FreeContextBuffer_wrap(out0)
 	if stat < 0 {
 		return fmt.Errorf("Error creating disconnect token: %x", uint32(stat))
@@ -572,7 +553,6 @@ func (c *Conn) disconnect() (err error) {
 }
 
 func (c *Conn) Close() error {
-	fmt.Println("Close")
 	defer C.free(unsafe.Pointer(c.targetName))
 	defer C.FreeBuffers(&c.writeMsg)
 	defer C.FreeBuffers(&c.readMsg)
