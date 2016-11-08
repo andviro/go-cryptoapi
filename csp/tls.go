@@ -5,6 +5,9 @@ package csp
 #define NT4_DLL_NAME TEXT("Security.dll")
 
 static PSecurityFunctionTable g_pSSPI;
+#ifdef _WIN32
+static HMODULE g_hSecurity = NULL;
+#endif
 
 static BOOL LoadSecurityLibrary(void) {
     INIT_SECURITY_INTERFACE         pInitSecurityInterface;
@@ -78,7 +81,7 @@ static SECURITY_STATUS  EncryptMessage_wrap(PCtxtHandle    phContext, PSecBuffer
 	return g_pSSPI->EncryptMessage(phContext, 0, pMessage, 0);
 }
 
-static SECURITY_STATUS QueryContextAttributes_wrap(PCtxtHandle phContext, ulong ulAttribute, PVOID pBuffer) {
+static SECURITY_STATUS QueryContextAttributes_wrap(PCtxtHandle phContext, ULONG ulAttribute, PVOID pBuffer) {
     return g_pSSPI->QueryContextAttributes(phContext, ulAttribute, pBuffer);
 }
 
@@ -218,7 +221,7 @@ func newCredentials(certs []Cert) (res *credentials, err error) {
 			C.setPCert(res.schannelCred.paCred, C.int(n), cert.pCert)
 		}
 	}
-	if stat := C.AcquireCredentialsHandle_wrap(&res.schannelCred, &res.hClientCreds, &res.expires); stat != C.SEC_E_OK {
+	if stat := C.AcquireCredentialsHandle_wrap(&res.schannelCred, &res.hClientCreds, (*C.SECURITY_INTEGER)&res.expires); stat != C.SEC_E_OK {
 		err = fmt.Errorf("Error acquiring credentials handle: %x", uint32(stat))
 		return
 	}

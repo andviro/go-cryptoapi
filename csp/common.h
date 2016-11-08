@@ -16,28 +16,13 @@
 #   include <security.h>
 #   include <sspi.h>
 #   define IS_SOCKET_ERROR(a) (a==SOCKET_ERROR)
-#   include <WinCryptEx.h>
 #   include <winerror.h>
+#   include <sys/types.h>
 #else
-#   include <stdint.h>
 #   include "CSP_WinDef.h"
 #   include "CSP_WinCrypt.h"
 #   include "CSP_Sspi.h"
 #   include "CSP_SChannel.h"
-#   include "CpSSP.h"
-#   include <sys/types.h>
-#   if defined (_AIX) || defined (ANDROID)
-#	include <fcntl.h>
-#   else
-#	include <sys/fcntl.h>
-#   endif
-#   include <sys/stat.h>
-#   include <sys/socket.h>
-#   include <netinet/in.h>
-#   include <arpa/inet.h>
-#   include <netdb.h>
-#   include <errno.h>
-#   include <unistd.h>
 #endif
 
 #define MY_ENC_TYPE (X509_ASN_ENCODING | PKCS_7_ASN_ENCODING)

@@ -3,12 +3,12 @@
 package csp
 
 /*
-#cgo linux CFLAGS: -DUNIX -DLINUX -I. -I/opt/cprocsp/include  -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include/asn1c/rtsrc -I/opt/cprocsp/include/asn1data/
+#cgo linux CFLAGS: -DUNIX -DLINUX -I. -I/opt/cprocsp/include  -I/opt/cprocsp/include/cpcsp
 #cgo amd64 CFLAGS: -DSIZEOF_VOID_P=8
 #cgo 386 CFLAGS: -DSIZEOF_VOID_P=4
 
-#cgo linux,amd64 LDFLAGS: -L/opt/cprocsp/lib/amd64/ -lcapi10 -lcapi20 -lrdrsup -lssp
-#cgo linux,386 LDFLAGS: -L/opt/cprocsp/lib/ia32/ -lcapi10 -lcapi20 -lrdrsup -lssp
+#cgo linux,amd64 LDFLAGS: -L/opt/cprocsp/lib/amd64/ -lcapi10 -lcapi20 -lssp
+#cgo linux,386 LDFLAGS: -L/opt/cprocsp/lib/ia32/ -lcapi10 -lcapi20 -lssp
 #cgo windows LDFLAGS: -lcrypt32 -lpthread
 #include "common.h"
 */
