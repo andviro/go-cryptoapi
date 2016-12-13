@@ -34,3 +34,22 @@ func (ci CertInfo) PublicKeyBytes() []byte {
 	pb := ci.pCertInfo.SubjectPublicKeyInfo.PublicKey
 	return C.GoBytes(unsafe.Pointer(pb.pbData), C.int(pb.cbData))
 }
+
+func nameToStr(src C.PCERT_NAME_BLOB) (string, error) {
+	slen := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, nil, 0)
+	data := make([]byte, slen)
+	if n := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, (*C.CHAR)(unsafe.Pointer(&data[0])), slen); n == 0 {
+		return string(data), getErr("Error converting RDN to string")
+	}
+	return string(data), nil
+}
+
+// SubjectStr returns certificate subject converted to Go string
+func (ci CertInfo) SubjectStr() (string, error) {
+	return nameToStr(&ci.pCertInfo.Subject)
+}
+
+// IssuerStr returns certificate issuer converted to Go string
+func (ci CertInfo) IssuerStr() (string, error) {
+	return nameToStr(&ci.pCertInfo.Issuer)
+}
