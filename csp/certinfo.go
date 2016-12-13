@@ -38,10 +38,11 @@ func (ci CertInfo) PublicKeyBytes() []byte {
 func nameToStr(src C.PCERT_NAME_BLOB) (string, error) {
 	slen := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, nil, 0)
 	data := make([]byte, slen)
-	if n := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, (*C.CHAR)(unsafe.Pointer(&data[0])), slen); n == 0 {
-		return string(data), getErr("Error converting RDN to string")
+	cStrPtr := (*C.CHAR)(unsafe.Pointer(&data[0]))
+	if n := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, cStrPtr, slen); n == 0 {
+		return "", getErr("Error converting RDN to string")
 	}
-	return string(data), nil
+	return C.GoString((*C.char)(cStrPtr)), nil
 }
 
 // SubjectStr returns certificate subject converted to Go string
