@@ -3,6 +3,8 @@ package csp
 /*
 #include "common.h"
 
+extern PFN_CMSG_STREAM_OUTPUT msgUpdateCallback;
+
 static BOOL WINAPI msgUpdateCallback_cgo(
     const void *pvArg,
     BYTE *pbData,
