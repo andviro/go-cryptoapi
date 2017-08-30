@@ -25,6 +25,7 @@ const (
 	ProvRsa      ProvType = C.PROV_RSA_FULL
 	ProvGost94   ProvType = 71
 	ProvGost2001 ProvType = 75
+	ProvGost2012 ProvType = 80
 )
 
 // Ctx is a CSP context nessessary for cryptographic
