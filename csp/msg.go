@@ -3,7 +3,11 @@ package csp
 /*
 #include "common.h"
 
-extern PFN_CMSG_STREAM_OUTPUT msgUpdateCallback;
+extern BOOL WINAPI msgUpdateCallback(
+    const void *pvArg,
+    BYTE *pbData,
+    DWORD cbData,
+    BOOL fFinal);
 
 static BOOL WINAPI msgUpdateCallback_cgo(
     const void *pvArg,
