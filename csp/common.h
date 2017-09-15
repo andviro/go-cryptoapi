@@ -10,6 +10,7 @@
 #   include <wincrypt.h>
 #   include <winerror.h>
 #else
+#   define HCRYPTPROV_OR_NCRYPT_KEY_HANDLE HCRYPTPROV
 #   include <CSP_WinDef.h>
 #   include <CSP_WinCrypt.h>
 #endif

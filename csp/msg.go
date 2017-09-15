@@ -191,14 +191,14 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 
 	for i, signerCert := range options.Signers {
 		var (
-			hCryptProv C.HCRYPTPROV
+			hCryptProv C.HCRYPTPROV_OR_NCRYPT_KEY_HANDLE
 			dwKeySpec  C.DWORD
 		)
 		if 0 == C.CryptAcquireCertificatePrivateKey(signerCert.pCert, 0, nil, &hCryptProv, &dwKeySpec, nil) {
 			err = getErr("Error acquiring certificate private key")
 			return
 		}
-		C.setSignedInfo(signedInfo, C.int(i), hCryptProv, signerCert.pCert, dwKeySpec, (*C.CHAR)(hashOID))
+		C.setSignedInfo(signedInfo, C.int(i), C.HCRYPTPROV(hCryptProv), signerCert.pCert, dwKeySpec, (*C.CHAR)(hashOID))
 	}
 
 	res.hMsg = C.CryptMsgOpenToEncode(
