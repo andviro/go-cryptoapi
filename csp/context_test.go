@@ -3,14 +3,17 @@ package csp
 import (
 	//"fmt"
 	"errors"
-	"gopkg.in/tylerb/is.v1"
+	"flag"
 	"os"
 	"testing"
+
+	"gopkg.in/tylerb/is.v1"
 )
 
 var (
-	provName string
-	provType ProvType
+	provName      string
+	signCertThumb string
+	provType      ProvType
 )
 
 func TestContextVerify(t *testing.T) {
@@ -61,5 +64,7 @@ func TestMain(m *testing.M) {
 	}
 	provName = x[0].Name
 	provType = x[0].Type
+	flag.StringVar(&signCertThumb, "cert", "", "certificate thumbprint for signing")
+	flag.Parse()
 	os.Exit(m.Run())
 }
