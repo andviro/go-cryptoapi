@@ -34,23 +34,25 @@ func (c Cert) Close() error {
 	return nil
 }
 
-type CertPropertyId C.DWORD
+// CertPropertyID corresponds to a C type of DWORD
+type CertPropertyID C.DWORD
 
+// Constants for certificate property IDs
 const (
-	CertHashProp          CertPropertyId = C.CERT_HASH_PROP_ID
-	CertKeyIdentifierProp CertPropertyId = C.CERT_KEY_IDENTIFIER_PROP_ID
-	CertProvInfoProp      CertPropertyId = C.CERT_KEY_PROV_INFO_PROP_ID
+	CertHashProp          CertPropertyID = C.CERT_HASH_PROP_ID
+	CertKeyIDentifierProp CertPropertyID = C.CERT_KEY_IDENTIFIER_PROP_ID
+	CertProvInfoProp      CertPropertyID = C.CERT_KEY_PROV_INFO_PROP_ID
 )
 
 // GetProperty is a base function for extracting certificate context properties
-func (c Cert) GetProperty(propId CertPropertyId) ([]byte, error) {
+func (c Cert) GetProperty(propID CertPropertyID) ([]byte, error) {
 	var slen C.DWORD
 	var res []byte
-	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propId), nil, &slen) == 0 {
+	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), nil, &slen) == 0 {
 		return res, getErr("Error getting cert context property size")
 	}
 	res = make([]byte, slen)
-	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propId), unsafe.Pointer(&res[0]), &slen) == 0 {
+	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), unsafe.Pointer(&res[0]), &slen) == 0 {
 		return res, getErr("Error getting cert context property body")
 	}
 	return res, nil
@@ -62,7 +64,7 @@ func (c Cert) ThumbPrint() (string, error) {
 	return hex.EncodeToString(thumb), err
 }
 
-// MustThumbprint returns certificate's hash as a hexadecimal string or panics
+// MustThumbPrint returns certificate's hash as a hexadecimal string or panics
 func (c Cert) MustThumbPrint() string {
 	if thumb, err := c.ThumbPrint(); err != nil {
 		panic(err)
@@ -71,22 +73,22 @@ func (c Cert) MustThumbPrint() string {
 	}
 }
 
-// SubjectId returs certificate's subject public key Id as a hexadecimal string
-func (c Cert) SubjectId() (string, error) {
-	thumb, err := c.GetProperty(CertKeyIdentifierProp)
+// SubjectID returns certificate's subject public key ID as a hexadecimal string
+func (c Cert) SubjectID() (string, error) {
+	thumb, err := c.GetProperty(CertKeyIDentifierProp)
 	return hex.EncodeToString(thumb), err
 }
 
-// MustSubjectId returns certificate's subject id or panics
-func (c Cert) MustSubjectId() string {
-	if subj, err := c.SubjectId(); err != nil {
+// MustSubjectID returns certificate's subject id or panics
+func (c Cert) MustSubjectID() string {
+	if subj, err := c.SubjectID(); err != nil {
 		panic(err)
 	} else {
 		return subj
 	}
 }
 
-// Extract returns encoded certificate as byte slice
+// Bytes returns encoded certificate as byte slice
 func (c Cert) Bytes() []byte {
 	return C.GoBytes(unsafe.Pointer(c.pCert.pbCertEncoded), C.int(c.pCert.cbCertEncoded))
 }

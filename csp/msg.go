@@ -78,6 +78,7 @@ import (
 	"unsafe"
 )
 
+// Common object identifiers
 var (
 	GOST_R3411        asn1.ObjectIdentifier = []int{1, 2, 643, 2, 2, 9}
 	GOST_R3411_12_256 asn1.ObjectIdentifier = []int{1, 2, 643, 7, 1, 1, 2, 2}
@@ -104,10 +105,11 @@ type Msg struct {
 	eof            bool
 }
 
+// EncodeOptions specifies message creation details
 type EncodeOptions struct {
-	Detached bool
-	HashAlg  asn1.ObjectIdentifier
-	Signers  []Cert
+	Detached bool                  // Signature is detached
+	HashAlg  asn1.ObjectIdentifier // Signature hash algorithm ID
+	Signers  []Cert                // Signing certificate list
 }
 
 // OpenToDecode creates new Msg in decode mode. If detachedSig parameter is specified,
@@ -220,73 +222,73 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 
 // Close needs to be called to release internal message handle. When in encode mode,
 // it also closes the underlying writer if it implements io.Closer
-func (m Msg) Close() error {
-	if m.dest != nil {
-		if !m.update([]byte{0}, 0, true) {
+func (msg Msg) Close() error {
+	if msg.dest != nil {
+		if !msg.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
 		}
 	}
-	if C.CryptMsgClose(m.hMsg) == 0 {
+	if C.CryptMsgClose(msg.hMsg) == 0 {
 		return getErr("Error closing message")
 	}
-	if cl, ok := m.dest.(io.Closer); ok {
+	if cl, ok := msg.dest.(io.Closer); ok {
 		return cl.Close()
 	}
 	return nil
 }
 
-func (m Msg) update(buf []byte, n int, lastCall bool) bool {
+func (msg Msg) update(buf []byte, n int, lastCall bool) bool {
 	var lc C.BOOL
 	if lastCall {
 		lc = C.BOOL(1)
 	}
-	return C.CryptMsgUpdate(m.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
+	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
 // Read parses message input stream and fills buf parameter with decoded data chunk
-func (m *Msg) Read(buf []byte) (n int, err error) {
-	if m.eof {
+func (msg *Msg) Read(buf []byte) (n int, err error) {
+	if msg.eof {
 		return 0, io.EOF
 	}
-	nRead, err := m.src.Read(buf)
+	nRead, err := msg.src.Read(buf)
 	if err != nil && err != io.EOF {
 		return
 	}
 
-	m.data = unsafe.Pointer(&buf[0])
-	m.n = 0
-	m.maxN = len(buf)
-	m.eof = (err == io.EOF)
+	msg.data = unsafe.Pointer(&buf[0])
+	msg.n = 0
+	msg.maxN = len(buf)
+	msg.eof = (err == io.EOF)
 
-	ok := m.update(buf, nRead, m.eof)
-	n = m.n
+	ok := msg.update(buf, nRead, msg.eof)
+	n = msg.n
 	if !ok {
 		err = getErr("Error updating message body")
 		return
 	}
-	err = m.lastError
+	err = msg.lastError
 	return
 }
 
 // Write encodes provided bytes into message output data stream
-func (m *Msg) Write(buf []byte) (n int, err error) {
-	ok := m.update(buf, len(buf), false)
+func (msg *Msg) Write(buf []byte) (n int, err error) {
+	ok := msg.update(buf, len(buf), false)
 	if !ok {
 		err = getErr("Error updating message body")
 		return
 	}
 	n = len(buf)
-	err = m.lastError
+	err = msg.lastError
 	return
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream
 // is fully read and parsed.
-func (m *Msg) CertStore() (res CertStore, err error) {
-	if _, err = ioutil.ReadAll(m); err != nil {
+func (msg *Msg) CertStore() (res CertStore, err error) {
+	if _, err = ioutil.ReadAll(msg); err != nil {
 		return
 	}
-	if res.hStore = C.openStoreMsg(m.hMsg); res.hStore == nil {
+	if res.hStore = C.openStoreMsg(msg.hMsg); res.hStore == nil {
 		err = getErr("Error opening message cert store")
 		return
 	}
@@ -295,11 +297,11 @@ func (m *Msg) CertStore() (res CertStore, err error) {
 
 // Verify verifies message signature against signer certificate. As a
 // side-effect, source stream is fully read and parsed.
-func (m *Msg) Verify(c Cert) (err error) {
-	if _, err = ioutil.ReadAll(m); err != nil {
+func (msg *Msg) Verify(c Cert) (err error) {
+	if _, err = ioutil.ReadAll(msg); err != nil {
 		return
 	}
-	if 0 == C.CryptMsgControl(m.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) {
+	if 0 == C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) {
 		return getErr("Error verifying message signature")
 	}
 	return nil

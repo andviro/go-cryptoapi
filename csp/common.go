@@ -16,6 +16,7 @@ import (
 	"unsafe"
 )
 
+// ErrorCode corresponds to a C type DWORD
 type ErrorCode C.DWORD
 
 // Some C error codes translated to Go constants
@@ -27,15 +28,16 @@ const (
 	ErrExists       ErrorCode = C.NTE_EXISTS & (1<<32 - 1)         // Object already exists
 	ErrNotFound     ErrorCode = C.NTE_NOT_FOUND & (1<<32 - 1)      // Object not found
 	ErrKeysetNotDef ErrorCode = C.NTE_KEYSET_NOT_DEF & (1<<32 - 1) // Operation on unknown container
+	ErrBadKeyset    ErrorCode = C.NTE_BAD_KEYSET & (1<<32 - 1)     // Operation on unknown container
 )
 
-// CSP Error type. Code field indicates exact CryptoAPI error code
-type CspError struct {
-	Code ErrorCode
+// Error provides error type
+type Error struct {
+	Code ErrorCode // Code indicates exact CryptoAPI error code
 	msg  string
 }
 
-func (e CspError) Error() string {
+func (e Error) Error() string {
 	return fmt.Sprintf("%s: %X", e.msg, e.Code)
 }
 
@@ -53,7 +55,7 @@ func freePtr(s *C.CHAR) {
 }
 
 func getErr(msg string) error {
-	return CspError{msg: msg, Code: ErrorCode(C.GetLastError())}
+	return Error{msg: msg, Code: ErrorCode(C.GetLastError())}
 }
 
 func extractBlob(pb *C.DATA_BLOB) []byte {

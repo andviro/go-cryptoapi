@@ -10,6 +10,7 @@ import (
 // CryptFlag determines behaviour of acquired context
 type CryptFlag C.DWORD
 
+// Flags for acquiring context
 const (
 	CryptVerifyContext CryptFlag = C.CRYPT_VERIFYCONTEXT
 	CryptNewKeyset     CryptFlag = C.CRYPT_NEWKEYSET
@@ -21,11 +22,13 @@ const (
 // ProvType is CryptoAPI provider type
 type ProvType C.DWORD
 
+// Provider types
 const (
-	ProvRsa      ProvType = C.PROV_RSA_FULL
-	ProvGost94   ProvType = 71
-	ProvGost2001 ProvType = 75
-	ProvGost2012 ProvType = 80
+	ProvRsa          ProvType = C.PROV_RSA_FULL
+	ProvGost94       ProvType = 71
+	ProvGost2001     ProvType = 75
+	ProvGost2012     ProvType = 80
+	ProvGost2012_512 ProvType = 81
 )
 
 // Ctx is a CSP context nessessary for cryptographic
@@ -79,7 +82,7 @@ func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) 
 	return
 }
 
-//RemoveCtx deletes key container from CSP.
+//DeleteCtx deletes key container from CSP.
 func DeleteCtx(container, provider string, provType ProvType) error {
 	_, err := AcquireCtx(container, provider, provType, CryptDeleteKeyset)
 	return err
@@ -95,7 +98,7 @@ func (ctx Ctx) Close() error {
 
 // SetPassword changes PIN on key container acquired with AcquireCtx to pwd. Which
 // private/public key pair affected is determined by at parameter.
-func (ctx Ctx) SetPassword(pwd string, at KeyPairId) error {
+func (ctx Ctx) SetPassword(pwd string, at KeyPairID) error {
 	var pParam C.DWORD
 	pin := unsafe.Pointer(C.CString(pwd))
 	defer C.free(pin)
