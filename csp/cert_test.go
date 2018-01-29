@@ -2,28 +2,34 @@ package csp
 
 import (
 	"encoding/base64"
-	"gopkg.in/tylerb/is.v1"
 	"testing"
+
+	"gopkg.in/tylerb/is.v1"
 )
 
 var certData = `
-MIIC/DCCAeagAwIBAgIRAOFquydyZU9tgXgQd5f2h6IwCwYJKoZIhvcNAQELMBIx
-EDAOBgNVBAoTB0FjbWUgQ28wHhcNMTUwNzA1MDcyNzE2WhcNMTYwNzA0MDcyNzE2
-WjASMRAwDgYDVQQKEwdBY21lIENvMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
-CgKCAQEAxGD/bLOlmcichuYV2sjPB8yIxW4ULhqhqyCKf0S0lUTdY0kUwuAOVO8w
-3UWJX0QaFJpP8k0jY+wasyWvaqeiKvNtnNuvwjLrClvzwtnjtvgTYQPUbUM8JAsp
-P/7FrOd41uL5jqTs0cfN/zxVQq5dePclYqfOQsbpNulHP7vXuyxMDl1yeeHK/S2T
-3O8Fx7SErztjs2ThJbrvhZgrmdptOuAmR45oSyTnEpeiPysGlZOm4ntvFBXXjWi3
-xeUClxHymlFbjA2Yk932PLuvcunAM5ihPZBknxUrZIriq6Vhu60L+L23jyxdP4/o
-I2xlOzhUYi22YirYPTf0iNekTPA7bwIDAQABo1EwTzAOBgNVHQ8BAf8EBAMCAKAw
-EwYDVR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAaBgNVHREEEzARgg9U
-ZXN0R29DcnlwdG9BUEkwCwYJKoZIhvcNAQELA4IBAQB44i6Cjt1soIYcrXX/+BhM
-/jEVxuYUY9VXEJ5RR+hxEhdPueB0i0b4NTKe417PA5jVHN9YeV6gKBXDMaAnN/E1
-o5l+w7WxM03GGklH6TtH7aYsCIH8xUA5AkXB0ZNDLyDeMnq1sIzD/Z+ugIpMLuvt
-VYFkQ2KwFCaqBJkq2Un9I3bUzXU4X9umubD4DUd1CSH1uRyQQfsnJjz8TWeS9nVe
-Fy/OfGEaF8zewD+iSsmob52ifRG7qYcN1rEsyfHpQ33oooB/I8s9Nil9WatEpZNC
-Sp4EAT/s6eUCx00m2uS2SJ83n7XHWr0hKxEtISL9tAA1fzwvT1eswO2IdKSBg47K
+MIIDHzCCAs6gAwIBAgITEgAlHKiioEaX0w6yFgAAACUcqDAIBgYqhQMCAgMwfzEjMCEGCSqGSIb3
+DQEJARYUc3VwcG9ydEBjcnlwdG9wcm8ucnUxCzAJBgNVBAYTAlJVMQ8wDQYDVQQHEwZNb3Njb3cx
+FzAVBgNVBAoTDkNSWVBUTy1QUk8gTExDMSEwHwYDVQQDExhDUllQVE8tUFJPIFRlc3QgQ2VudGVy
+IDIwHhcNMTgwMTI0MTIzMTAzWhcNMTgwNDI0MTI0MTAzWjAkMSIwIAYDVQQDDBlDU1AgVGVzdCBj
+ZXJ0aWZpY2F0ZV8yMDEyMGYwHwYIKoUDBwEBAQEwEwYHKoUDAgIkAAYIKoUDBwEBAgIDQwAEQKwp
+vrPwC5k0WSKyTseCf7V6OjnzwN07aJqNj2A9phaQd0/BicLQkf21xXoCI+TmQ6mFZGmTLvnbRgK8
+rs8sqlijggF3MIIBczALBgNVHQ8EBAMCBPAwHQYDVR0lBBYwFAYIKwYBBQUHAwQGCCsGAQUFBwMC
+MB0GA1UdDgQWBBTxxr0WOmM09CsjW27W3mUTRvRwzTAfBgNVHSMEGDAWgBQVMXywjRreZtcVnElS
+lxckuQF6gzBZBgNVHR8EUjBQME6gTKBKhkhodHRwOi8vdGVzdGNhLmNyeXB0b3Byby5ydS9DZXJ0
+RW5yb2xsL0NSWVBUTy1QUk8lMjBUZXN0JTIwQ2VudGVyJTIwMi5jcmwwgakGCCsGAQUFBwEBBIGc
+MIGZMGEGCCsGAQUFBzAChlVodHRwOi8vdGVzdGNhLmNyeXB0b3Byby5ydS9DZXJ0RW5yb2xsL3Rl
+c3QtY2EtMjAxNF9DUllQVE8tUFJPJTIwVGVzdCUyMENlbnRlciUyMDIuY3J0MDQGCCsGAQUFBzAB
+hihodHRwOi8vdGVzdGNhLmNyeXB0b3Byby5ydS9vY3NwL29jc3Auc3JmMAgGBiqFAwICAwNBAI09
+oVDNKzK++W1TKQr+ni0Ft6YZmuMLV1KOQFLNENqfsSfvM4e5ptsqUNM6AXfzJD0uebjJCvE8Vxxd
+DlA1v9M=
 `
+
+const (
+	certThumb     = "8443b5d408789c867c9037b2370fe1a24643e36d"
+	certSubjectID = "f1c6bd163a6334f42b235b6ed6de651346f470cd"
+	certSubject   = "CSP Test certificate_2012"
+)
 
 func getCert() Cert {
 	data, _ := base64.StdEncoding.DecodeString(certData)
@@ -46,10 +52,12 @@ func TestCertProps(t *testing.T) {
 	is := is.New(t)
 
 	crt := getCert()
-	thumb, _ := crt.ThumbPrint()
-	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", thumb)
-	subjectId, _ := crt.SubjectId()
-	is.Equal("b091df915184fc44d9f9b23faf7b15939ecbca09", subjectId)
+	thumb, err := crt.ThumbPrint()
+	is.NotErr(err)
+	is.Equal(certThumb, thumb)
+	subjectID, err := crt.SubjectID()
+	is.NotErr(err)
+	is.Equal(certSubjectID, subjectID)
 }
 
 func TestMemoryStore(t *testing.T) {
@@ -78,23 +86,23 @@ func TestFind(t *testing.T) {
 	crt := getCert()
 	is.NotErr(store.Add(crt))
 
-	crt2, err := store.GetByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
+	crt2, err := store.GetByThumb(certThumb)
 	is.NotErr(err)
-	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt2.MustThumbPrint())
+	is.Equal(certThumb, crt2.MustThumbPrint())
 	is.NotErr(crt2.Close())
 
-	crt2, err = store.GetBySubjectId("b091df915184fc44d9f9b23faf7b15939ecbca09")
+	crt2, err = store.GetBySubjectId(certSubjectID)
 	is.NotErr(err)
-	is.Equal("b091df915184fc44d9f9b23faf7b15939ecbca09", crt2.MustSubjectId())
+	is.Equal(certSubjectID, crt2.MustSubjectID())
 	is.NotErr(crt2.Close())
 
-	certsInStore := store.FindByThumb("4786a766633da61a2a2b1d668174172a9fc0af5e")
+	certsInStore := store.FindByThumb(certThumb)
 	is.Equal(1, len(certsInStore))
 	for _, c := range certsInStore {
 		is.NotErr(c.Close())
 	}
 
-	certsInStore = store.FindBySubjectId("b091df915184fc44d9f9b23faf7b15939ecbca09")
+	certsInStore = store.FindBySubjectId(certSubjectID)
 	is.Equal(1, len(certsInStore))
 	for _, c := range certsInStore {
 		is.NotErr(c.Close())
@@ -106,7 +114,7 @@ func TestFind(t *testing.T) {
 		is.NotErr(c.Close())
 	}
 
-	certsInStore3 := store.FindBySubject("Acme")
+	certsInStore3 := store.FindBySubject(certSubject)
 	is.NotZero(certsInStore3)
 	for _, c := range certsInStore3 {
 		is.NotErr(c.Close())
@@ -118,9 +126,9 @@ func TestFind(t *testing.T) {
 		is.NotErr(c.Close())
 	}
 
-	crt3, err := store.GetBySubject("Acme")
+	crt3, err := store.GetBySubject(certSubject)
 	is.NotErr(err)
-	is.Equal("4786a766633da61a2a2b1d668174172a9fc0af5e", crt3.MustThumbPrint())
+	is.Equal(certThumb, crt3.MustThumbPrint())
 	is.NotErr(crt3.Close())
 }
 

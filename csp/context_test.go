@@ -4,6 +4,7 @@ import (
 	//"fmt"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"testing"
 
@@ -39,9 +40,9 @@ func TestErrorContext(t *testing.T) {
 	is := is.New(t)
 
 	err := DeleteCtx(Container("NotExistentContext"), provName, provType)
-	cerr, ok := err.(CspError)
+	cerr, ok := err.(Error)
 	is.True(ok)
-	is.Equal(ErrKeysetNotDef, cerr.Code)
+	is.Equal(fmt.Sprintf("%x", ErrBadKeyset), fmt.Sprintf("%x", cerr.Code))
 }
 
 func TestCtxStore(t *testing.T) {
