@@ -68,7 +68,7 @@ func TestMsgEncode(t *testing.T) {
 	is.NotErr(err)
 	defer store.Close()
 
-	crt, err := store.GetByThumb("8e8e3128419de8a440768d70f78ddf9dfb0669c4")
+	crt, err := store.GetByThumb(signCertThumb)
 	is.NotErr(err)
 	defer crt.Close()
 
