@@ -14,6 +14,7 @@ import (
 var (
 	provName      string
 	signCertThumb string
+	authCertSubjectID string
 	provType      ProvType
 )
 
@@ -55,7 +56,7 @@ func TestCtxStore(t *testing.T) {
 	is.NotErr(store.Close())
 }
 
-func TestMain(m *testing.M) {
+func testMain(m *testing.M) int {
 	x, err := EnumProviders()
 	if err != nil {
 		panic(err)
@@ -66,6 +67,15 @@ func TestMain(m *testing.M) {
 	provName = x[0].Name
 	provType = x[0].Type
 	flag.StringVar(&signCertThumb, "cert", "", "certificate thumbprint for signing")
+	flag.StringVar(&authCertSubjectID, "auth_cert", "", "certificate SubjectID for TLS auth")
 	flag.Parse()
-	os.Exit(m.Run())
+	if err := InitTls(); err != nil {
+		panic(err)
+	}
+	defer DeinitTls()
+	return m.Run()
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testMain(m))
 }

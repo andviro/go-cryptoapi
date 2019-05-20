@@ -3,7 +3,10 @@
 package csp
 
 /*
-#cgo linux CFLAGS: -I/opt/cprocsp/include/cpcsp
+#cgo linux CFLAGS: -DUNIX -DLINUX -I. -I/opt/cprocsp/include  -I/opt/cprocsp/include/cpcsp
+#cgo amd64 CFLAGS: -DSIZEOF_VOID_P=8
+#cgo 386 CFLAGS: -DSIZEOF_VOID_P=4
+
 #cgo linux,amd64 LDFLAGS: -L/opt/cprocsp/lib/amd64/ -lcapi10 -lcapi20 -lrdrsup -lssp
 #cgo linux,386 LDFLAGS: -L/opt/cprocsp/lib/ia32/ -lcapi10 -lcapi20 -lrdrsup -lssp
 #cgo windows LDFLAGS: -lcrypt32 -lpthread
