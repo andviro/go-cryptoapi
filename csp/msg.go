@@ -163,7 +163,7 @@ func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 
 func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	msg.n, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
-	return true
+	return msg.lastError == nil
 }
 
 // OpenToEncode creates new Msg in encode mode.
