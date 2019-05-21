@@ -220,8 +220,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	return
 }
 
-// Close needs to be called to release internal message handle. When in encode mode,
-// it also closes the underlying writer if it implements io.Closer
+// Close needs to be called to release internal message handle
 func (msg Msg) Close() error {
 	if msg.dest != nil {
 		if !msg.update([]byte{0}, 0, true) {
@@ -230,9 +229,6 @@ func (msg Msg) Close() error {
 	}
 	if C.CryptMsgClose(msg.hMsg) == 0 {
 		return getErr("Error closing message")
-	}
-	if cl, ok := msg.dest.(io.Closer); ok {
-		return cl.Close()
 	}
 	return nil
 }
