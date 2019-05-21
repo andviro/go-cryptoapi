@@ -67,14 +67,16 @@ func TestMsgEncode(t *testing.T) {
 	if signCertThumb == "" {
 		t.Skip("certificate for sign test not provided")
 	}
-	is := is.New(t)
-
 	store, err := SystemStore("MY")
-	is.NotErr(err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer store.Close()
 
 	crt, err := store.GetByThumb(signCertThumb)
-	is.NotErr(err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer crt.Close()
 
 	data := bytes.NewBufferString(strings.Repeat("Test data", 10000))
@@ -82,10 +84,14 @@ func TestMsgEncode(t *testing.T) {
 	msg, err := OpenToEncode(dest, EncodeOptions{
 		Signers: []Cert{crt},
 	})
-	is.NotErr(err)
-
-	_, err = data.WriteTo(msg)
-	is.NotErr(err)
-	is.NotErr(msg.Close())
-	is.NotZero(dest.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = data.WriteTo(msg); err != nil {
+		t.Fatal(err)
+	}
+	if err = msg.Close(); err != nil {
+		t.Fatal(err)
+	}
+	goldie.Assert(t, "msg-encode", dest.Bytes())
 }

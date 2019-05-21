@@ -6,6 +6,7 @@ package csp
 typedef struct {
 	BYTE *pbData;
 	DWORD cbData;
+	DWORD capacity;
 	BOOL final;
 } slice;
 
@@ -24,11 +25,13 @@ static BOOL WINAPI msgUpdateCallback(
     BOOL fFinal)
 {
 	PSLICE target = (PSLICE)pvArg;
-	if (cbData > target->cbData) {
-		target->pbData = realloc(target->pbData, cbData);
+	size_t newSize = target->cbData + cbData;
+	if (target->capacity < newSize) {
+		target->capacity = newSize * 2;
+		target->pbData = realloc(target->pbData, target->capacity);
 	}
-	memcpy(target->pbData, pbData, cbData);
-	target->cbData = cbData;
+	memcpy(&target->pbData[target->cbData], pbData, cbData);
+	target->cbData = newSize;
 	target->final = fFinal;
 	return 1;
 }
@@ -183,6 +186,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	res = &Msg{
 		data: C.PSLICE(slicePool.Get().(unsafe.Pointer)),
 	}
+	res.data.cbData = 0
 
 	if len(options.Signers) == 0 {
 		err = fmt.Errorf("Signer certificates list is empty")
@@ -237,18 +241,18 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 func (msg *Msg) Close() error {
 	defer slicePool.Put(unsafe.Pointer(msg.data))
 	if msg.dest != nil {
+		msg.data.cbData = 0
 		if !msg.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
 		}
-		if _, err := msg.dest.Write(C.GoBytes(unsafe.Pointer(msg.data.pbData), C.int(msg.data.cbData))); err != nil {
+		_, err := msg.dest.Write(C.GoBytes(unsafe.Pointer(msg.data.pbData), C.int(msg.data.cbData)))
+		if err != nil {
 			return err
 		}
 	}
+	msg.data.cbData = 0
 	if C.CryptMsgClose(msg.hMsg) == 0 {
 		return getErr("Error closing message")
-	}
-	if cl, ok := msg.dest.(io.Closer); ok {
-		return cl.Close()
 	}
 	return nil
 }
