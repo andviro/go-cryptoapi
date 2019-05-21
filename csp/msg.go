@@ -3,30 +3,32 @@ package csp
 /*
 #include "common.h"
 
-extern BOOL WINAPI msgUpdateCallback(
+extern BOOL WINAPI msgDecodeCallback(
     const void *pvArg,
     BYTE *pbData,
     DWORD cbData,
     BOOL fFinal);
 
-static BOOL WINAPI msgUpdateCallback_cgo(
+extern BOOL WINAPI msgEncodeCallback(
     const void *pvArg,
     BYTE *pbData,
     DWORD cbData,
-    BOOL fFinal)
-{
-	return msgUpdateCallback(pvArg, pbData, cbData, fFinal);
-}
+    BOOL fFinal);
+
 
 static HCERTSTORE openStoreMsg(HCRYPTMSG hMsg) {
 	return CertOpenStore(CERT_STORE_PROV_MSG, MY_ENC_TYPE, 0, CERT_STORE_CREATE_NEW_FLAG, hMsg);
 }
 
-static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg) {
+static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg, BOOL decode) {
 	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
 	memset(res, 0, sizeof(CMSG_STREAM_INFO));
 	res->cbContent = 0xffffffff;
-	res->pfnStreamOutput = &msgUpdateCallback_cgo;
+	if (decode) {
+		res->pfnStreamOutput = &msgDecodeCallback;
+	} else {
+		res->pfnStreamOutput = &msgEncodeCallback;
+	}
 	res->pvArg = pvArg;
 	return res;
 }
@@ -95,14 +97,13 @@ var (
 
 // Msg encapsulates stream decoder of PKCS7 message
 type Msg struct {
-	hMsg           C.HCRYPTMSG
-	src            io.Reader
-	dest           io.Writer
-	updateCallback func(*C.BYTE, C.DWORD, bool) error
-	lastError      error
-	data           unsafe.Pointer
-	n, maxN        int
-	eof            bool
+	hMsg      C.HCRYPTMSG
+	src       io.Reader
+	dest      io.Writer
+	lastError error
+	data      unsafe.Pointer
+	n, maxN   int
+	eof       bool
 }
 
 // EncodeOptions specifies message creation details
@@ -125,7 +126,7 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		flags = C.CMSG_DETACHED_FLAG
 		si = nil
 	} else {
-		si = C.mkStreamInfo(unsafe.Pointer(res))
+		si = C.mkStreamInfo(unsafe.Pointer(res), C.BOOL(1))
 		defer C.free(unsafe.Pointer(si))
 	}
 	res.hMsg = C.CryptMsgOpenToDecode(
@@ -141,7 +142,6 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		return
 	}
 	res.src = src
-	res.updateCallback = res.onDecode
 	for i, p := range detachedSig {
 		if !res.update(p, len(p), i == len(detachedSig)-1) {
 			err = getErr("Error updating message header")
@@ -151,18 +151,19 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 	return
 }
 
-func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
+func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	if int(cbData) > msg.maxN {
-		return fmt.Errorf("Buffer overrun on decoding")
+		msg.lastError = fmt.Errorf("Buffer overrun on decoding")
+		return false
 	}
 	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
 	msg.n = int(cbData)
-	return nil
+	return true
 }
 
-func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
+func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	msg.n, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
-	return nil
+	return true
 }
 
 // OpenToEncode creates new Msg in encode mode.
@@ -182,7 +183,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		flags = C.CMSG_DETACHED_FLAG
 	}
 
-	si := C.mkStreamInfo(unsafe.Pointer(res))
+	si := C.mkStreamInfo(unsafe.Pointer(res), C.BOOL(0))
 	defer C.free(unsafe.Pointer(si))
 
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)))
@@ -208,15 +209,14 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		flags,                      // flags
 		C.CMSG_SIGNED,              // message type
 		unsafe.Pointer(signedInfo), // pointer to structure
-		nil, // inner content OID
-		si,  // stream information
+		nil,                        // inner content OID
+		si,                         // stream information
 	)
 	if res.hMsg == nil {
 		err = getErr("Error opening message for encoding")
 		return
 	}
 	res.dest = dest
-	res.updateCallback = res.onEncode
 	return
 }
 
