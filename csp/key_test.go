@@ -1,8 +1,9 @@
 package csp
 
 import (
-	"gopkg.in/tylerb/is.v1"
 	"testing"
+
+	"gopkg.in/tylerb/is.v1"
 )
 
 func TestKey(t *testing.T) {
@@ -11,7 +12,7 @@ func TestKey(t *testing.T) {
 	provs, err := EnumProviders()
 	is.NotZero(provs)
 
-	ctx, err := AcquireCtx("TestGoCryptoAPIContainer", provs[0].Name, provs[0].Type, 0)
+	ctx, err := AcquireCtx("TestGoCryptoAPIContainer1", provs[0].Name, provs[0].Type, 0)
 	is.NotErr(err)
 	defer ctx.Close()
 

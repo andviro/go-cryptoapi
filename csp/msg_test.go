@@ -2,40 +2,45 @@ package csp
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/andviro/goldie"
 	"gopkg.in/tylerb/is.v1"
 )
 
 func TestMsgDecode(t *testing.T) {
-	is := is.New(t)
-
 	f, err := os.Open("testdata/logical.cms")
-	is.NotErr(err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer f.Close()
-
 	msg, err := OpenToDecode(f)
-	is.NotErr(err)
-	o, err := ioutil.TempFile("", "data")
-	is.NotErr(err)
-	defer o.Close()
-	defer os.Remove(o.Name())
-
-	n, err := io.Copy(o, msg)
-	is.NotErr(err)
-	is.NotZero(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := new(bytes.Buffer)
+	if _, err := io.Copy(buf, msg); err != nil {
+		t.Fatal(err)
+	}
+	goldie.Assert(t, "msg-decode-logical", buf.Bytes())
 
 	store, err := msg.CertStore()
-	is.NotErr(err)
-	is.NotZero(store)
-
-	for _, c := range store.Certs() {
-		is.Lax().NotErr(msg.Verify(c))
+	if err != nil {
+		t.Fatal(err)
 	}
-	is.NotErr(msg.Close())
+	buf.Reset()
+	for i, c := range store.Certs() {
+		if err := msg.Verify(c); err != nil {
+			t.Error(err)
+		}
+		fmt.Fprintf(buf, "cert thumb %d: %s\n", i, c.MustThumbPrint())
+	}
+	goldie.Assert(t, "msg-decode-certs", buf.Bytes())
 }
 
 func TestMsgVerifyDetached(t *testing.T) {
@@ -72,7 +77,7 @@ func TestMsgEncode(t *testing.T) {
 	is.NotErr(err)
 	defer crt.Close()
 
-	data := bytes.NewBufferString("Test data")
+	data := bytes.NewBufferString(strings.Repeat("Test data", 10000))
 	dest := new(bytes.Buffer)
 	msg, err := OpenToEncode(dest, EncodeOptions{
 		Signers: []Cert{crt},

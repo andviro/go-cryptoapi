@@ -3,31 +3,46 @@ package csp
 /*
 #include "common.h"
 
-extern BOOL WINAPI msgUpdateCallback(
-    const void *pvArg,
-    BYTE *pbData,
-    DWORD cbData,
-    BOOL fFinal);
+typedef struct {
+	BYTE *pbData;
+	DWORD cbData;
+	BOOL final;
+} slice;
 
-static BOOL WINAPI msgUpdateCallback_cgo(
+typedef slice *PSLICE;
+
+static slice *mkSlice() {
+	slice *res = malloc(sizeof(slice));
+	memset(res, 0, sizeof(slice));
+	return res;
+}
+
+static BOOL WINAPI msgUpdateCallback(
     const void *pvArg,
     BYTE *pbData,
     DWORD cbData,
     BOOL fFinal)
 {
-	return msgUpdateCallback(pvArg, pbData, cbData, fFinal);
+	PSLICE target = (PSLICE)pvArg;
+	if (cbData > target->cbData) {
+		target->pbData = realloc(target->pbData, cbData);
+	}
+	memcpy(target->pbData, pbData, cbData);
+	target->cbData = cbData;
+	target->final = fFinal;
+	return 1;
 }
 
 static HCERTSTORE openStoreMsg(HCRYPTMSG hMsg) {
 	return CertOpenStore(CERT_STORE_PROV_MSG, MY_ENC_TYPE, 0, CERT_STORE_CREATE_NEW_FLAG, hMsg);
 }
 
-static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg) {
+static CMSG_STREAM_INFO *mkStreamInfo(PSLICE target) {
 	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
 	memset(res, 0, sizeof(CMSG_STREAM_INFO));
 	res->cbContent = 0xffffffff;
-	res->pfnStreamOutput = &msgUpdateCallback_cgo;
-	res->pvArg = pvArg;
+	res->pfnStreamOutput = &msgUpdateCallback;
+	res->pvArg = (PVOID)target;
 	return res;
 }
 
@@ -67,6 +82,10 @@ static void freeSignedInfo(CMSG_SIGNED_ENCODE_INFO *info) {
 	free(info);
 }
 
+static BYTE *tailPointer(BYTE *data, int n) {
+	return &data[n];
+}
+
 */
 import "C"
 
@@ -75,6 +94,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"sync"
 	"unsafe"
 )
 
@@ -95,21 +115,26 @@ var (
 
 // Msg encapsulates stream decoder of PKCS7 message
 type Msg struct {
-	hMsg           C.HCRYPTMSG
-	src            io.Reader
-	dest           io.Writer
-	updateCallback func(*C.BYTE, C.DWORD, bool) error
-	lastError      error
-	data           unsafe.Pointer
-	n, maxN        int
-	eof            bool
+	hMsg      C.HCRYPTMSG
+	src       io.Reader
+	dest      io.Writer
+	data      C.PSLICE
+	tail      []byte
+	lastError error
+}
+
+var slicePool = &sync.Pool{
+	New: func() interface{} {
+		return unsafe.Pointer(C.mkSlice())
+	},
 }
 
 // EncodeOptions specifies message creation details
 type EncodeOptions struct {
-	Detached bool                  // Signature is detached
-	HashAlg  asn1.ObjectIdentifier // Signature hash algorithm ID
-	Signers  []Cert                // Signing certificate list
+	Detached   bool                  // Signature is detached
+	HashAlg    asn1.ObjectIdentifier // Signature hash algorithm ID
+	Signers    []Cert                // Signing certificate list
+	Recipients []Cert                // Recipients list for encryption
 }
 
 // OpenToDecode creates new Msg in decode mode. If detachedSig parameter is specified,
@@ -119,13 +144,14 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		flags C.DWORD
 		si    *C.CMSG_STREAM_INFO
 	)
-	res = new(Msg)
-
+	res = &Msg{
+		data: C.PSLICE(slicePool.Get().(unsafe.Pointer)),
+	}
 	if len(detachedSig) > 0 {
 		flags = C.CMSG_DETACHED_FLAG
 		si = nil
 	} else {
-		si = C.mkStreamInfo(unsafe.Pointer(res))
+		si = C.mkStreamInfo(res.data)
 		defer C.free(unsafe.Pointer(si))
 	}
 	res.hMsg = C.CryptMsgOpenToDecode(
@@ -141,7 +167,6 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		return
 	}
 	res.src = src
-	res.updateCallback = res.onDecode
 	for i, p := range detachedSig {
 		if !res.update(p, len(p), i == len(detachedSig)-1) {
 			err = getErr("Error updating message header")
@@ -151,25 +176,13 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 	return
 }
 
-func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
-	if int(cbData) > msg.maxN {
-		return fmt.Errorf("Buffer overrun on decoding")
-	}
-	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
-	msg.n = int(cbData)
-	return nil
-}
-
-func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) error {
-	msg.n, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
-	return nil
-}
-
 // OpenToEncode creates new Msg in encode mode.
 func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	var flags C.DWORD
 
-	res = new(Msg)
+	res = &Msg{
+		data: C.PSLICE(slicePool.Get().(unsafe.Pointer)),
+	}
 
 	if len(options.Signers) == 0 {
 		err = fmt.Errorf("Signer certificates list is empty")
@@ -182,7 +195,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		flags = C.CMSG_DETACHED_FLAG
 	}
 
-	si := C.mkStreamInfo(unsafe.Pointer(res))
+	si := C.mkStreamInfo(res.data)
 	defer C.free(unsafe.Pointer(si))
 
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)))
@@ -208,24 +221,27 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		flags,                      // flags
 		C.CMSG_SIGNED,              // message type
 		unsafe.Pointer(signedInfo), // pointer to structure
-		nil, // inner content OID
-		si,  // stream information
+		nil,                        // inner content OID
+		si,                         // stream information
 	)
 	if res.hMsg == nil {
 		err = getErr("Error opening message for encoding")
 		return
 	}
 	res.dest = dest
-	res.updateCallback = res.onEncode
 	return
 }
 
 // Close needs to be called to release internal message handle. When in encode mode,
 // it also closes the underlying writer if it implements io.Closer
-func (msg Msg) Close() error {
+func (msg *Msg) Close() error {
+	defer slicePool.Put(unsafe.Pointer(msg.data))
 	if msg.dest != nil {
 		if !msg.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
+		}
+		if _, err := msg.dest.Write(C.GoBytes(unsafe.Pointer(msg.data.pbData), C.int(msg.data.cbData))); err != nil {
+			return err
 		}
 	}
 	if C.CryptMsgClose(msg.hMsg) == 0 {
@@ -237,7 +253,7 @@ func (msg Msg) Close() error {
 	return nil
 }
 
-func (msg Msg) update(buf []byte, n int, lastCall bool) bool {
+func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
 	var lc C.BOOL
 	if lastCall {
 		lc = C.BOOL(1)
@@ -246,53 +262,56 @@ func (msg Msg) update(buf []byte, n int, lastCall bool) bool {
 }
 
 // Read parses message input stream and fills buf parameter with decoded data chunk
-func (msg *Msg) Read(buf []byte) (n int, err error) {
-	if msg.eof {
-		return 0, io.EOF
+func (msg *Msg) Read(buf []byte) (int, error) {
+	if len(msg.tail) > 0 || msg.lastError != nil {
+		return msg.drain(buf)
 	}
 	nRead, err := msg.src.Read(buf)
 	if err != nil && err != io.EOF {
-		return
+		return nRead, err
 	}
-
-	msg.data = unsafe.Pointer(&buf[0])
-	msg.n = 0
-	msg.maxN = len(buf)
-	msg.eof = (err == io.EOF)
-
-	ok := msg.update(buf, nRead, msg.eof)
-	n = msg.n
-	if !ok {
-		err = getErr("Error updating message body")
-		return
+	msg.lastError = err
+	msg.data.cbData = 0
+	if ok := msg.update(buf, nRead, (err == io.EOF)); !ok {
+		return 0, getErr("Error updating message body")
 	}
-	err = msg.lastError
-	return
+	msg.tail = C.GoBytes(unsafe.Pointer(msg.data.pbData), C.int(msg.data.cbData))
+	return msg.drain(buf)
+}
+
+func (msg *Msg) drain(buf []byte) (int, error) {
+	if len(msg.tail) > len(buf) {
+		copy(buf, msg.tail[:len(buf)])
+		msg.tail = msg.tail[len(buf):]
+		return len(buf), nil
+	}
+	copy(buf, msg.tail)
+	n := len(msg.tail)
+	msg.tail = nil
+	return n, msg.lastError
 }
 
 // Write encodes provided bytes into message output data stream
-func (msg *Msg) Write(buf []byte) (n int, err error) {
-	ok := msg.update(buf, len(buf), false)
-	if !ok {
-		err = getErr("Error updating message body")
-		return
+func (msg *Msg) Write(buf []byte) (int, error) {
+	msg.data.cbData = 0
+	if ok := msg.update(buf, len(buf), false); !ok {
+		return 0, getErr("Error updating message body")
 	}
-	n = len(buf)
-	err = msg.lastError
-	return
+	_, err := msg.dest.Write(C.GoBytes(unsafe.Pointer(msg.data.pbData), C.int(msg.data.cbData)))
+	return len(buf), err
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream
 // is fully read and parsed.
-func (msg *Msg) CertStore() (res CertStore, err error) {
-	if _, err = ioutil.ReadAll(msg); err != nil {
-		return
+func (msg *Msg) CertStore() (*CertStore, error) {
+	if _, err := ioutil.ReadAll(msg); err != nil {
+		return nil, err
 	}
+	res := new(CertStore)
 	if res.hStore = C.openStoreMsg(msg.hMsg); res.hStore == nil {
-		err = getErr("Error opening message cert store")
-		return
+		return nil, getErr("Error opening message cert store")
 	}
-	return
+	return res, nil
 }
 
 // Verify verifies message signature against signer certificate. As a
