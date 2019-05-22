@@ -51,6 +51,7 @@ static CMSG_SIGNED_ENCODE_INFO *mkSignedInfo(int n) {
 	return res;
 }
 
+
 static void setSignedInfo(CMSG_SIGNED_ENCODE_INFO *out, int n, HCRYPTPROV hCryptProv, PCCERT_CONTEXT pSignerCert, DWORD dwKeySpec, LPSTR oid) {
 	out->rgSigners[n].cbSize = sizeof(CMSG_SIGNER_ENCODE_INFO);
 	out->rgSigners[n].pCertInfo = pSignerCert->pCertInfo;
@@ -68,6 +69,31 @@ static void freeSignedInfo(CMSG_SIGNED_ENCODE_INFO *info) {
 	free(info->rgSigners);
 	free(info);
 }
+
+static CMSG_ENVELOPED_ENCODE_INFO *mkEnvelopedInfo(int numRecipients) {
+    CRYPT_ALGORITHM_IDENTIFIER EncryptAlgorithm;
+    CRYPT_ENCRYPT_MESSAGE_PARA EncryptParams;
+
+    memset(&EncryptAlgorithm, 0, sizeof(CRYPT_ALGORITHM_IDENTIFIER));
+    EncryptAlgorithm.pszObjId = (LPSTR)ENCRYPT_OID;
+    memset(&EncryptParams, 0, sizeof(EncryptParams));
+    EncryptParams.cbSize =  sizeof(EncryptParams);
+    EncryptParams.dwMsgEncodingType = MY_ENCODING_TYPE;
+    if (cprov) {
+        EncryptParams.hCryptProv = cprov->hprov;
+    }
+    EncryptParams.ContentEncryptionAlgorithm = EncryptAlgorithm;
+	memset(&EnvelopedEncodeInfo,
+		   0,
+		   sizeof(CMSG_ENVELOPED_ENCODE_INFO));
+	EnvelopedEncodeInfo.cbSize = sizeof(CMSG_ENVELOPED_ENCODE_INFO);
+	EnvelopedEncodeInfo.hCryptProv = hCryptProv;
+	EnvelopedEncodeInfo.ContentEncryptionAlgorithm = ContentEncryptAlgorithm;
+	EnvelopedEncodeInfo.pvEncryptionAuxInfo = NULL;
+	EnvelopedEncodeInfo.cRecipients = 1;
+	EnvelopedEncodeInfo.rgpRecipients = RecipCertArray;
+}
+
 
 */
 import "C"
