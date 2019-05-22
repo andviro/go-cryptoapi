@@ -3,6 +3,10 @@ package csp
 /*
 #include "common.h"
 
+static HCERTSTORE openStoreMsg(HCRYPTMSG hMsg) {
+	return CertOpenStore(CERT_STORE_PROV_MSG, MY_ENC_TYPE, 0, CERT_STORE_CREATE_NEW_FLAG, hMsg);
+}
+
 extern BOOL WINAPI msgDecodeCallback(
     const void *pvArg,
     BYTE *pbData,
@@ -15,10 +19,6 @@ extern BOOL WINAPI msgEncodeCallback(
     DWORD cbData,
     BOOL fFinal);
 
-
-static HCERTSTORE openStoreMsg(HCRYPTMSG hMsg) {
-	return CertOpenStore(CERT_STORE_PROV_MSG, MY_ENC_TYPE, 0, CERT_STORE_CREATE_NEW_FLAG, hMsg);
-}
 
 static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg, BOOL decode) {
 	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
@@ -77,6 +77,8 @@ import (
 	"io"
 	"io/ioutil"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 // Common object identifiers
@@ -114,13 +116,12 @@ type EncodeOptions struct {
 
 // OpenToDecode creates new Msg in decode mode. If detachedSig parameter is specified,
 // it must contain detached P7S signature
-func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
+func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, rErr error) {
 	var (
 		flags C.DWORD
 		si    *C.CMSG_STREAM_INFO
 	)
 	res = new(Msg)
-
 	if len(detachedSig) > 0 {
 		flags = C.CMSG_DETACHED_FLAG
 		si = nil
@@ -128,6 +129,7 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		si = C.mkStreamInfo(unsafe.Pointer(res), C.BOOL(1))
 		defer C.free(unsafe.Pointer(si))
 	}
+	res.src = src
 	res.hMsg = C.CryptMsgOpenToDecode(
 		C.MY_ENC_TYPE, // encoding type
 		flags,         // flags
@@ -137,17 +139,22 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, err error) {
 		si,            // stream info
 	)
 	if res.hMsg == nil {
-		err = getErr("Error opening message for decoding")
-		return
+		return nil, getErr("Error opening message for decoding")
 	}
-	res.src = src
-	for i, p := range detachedSig {
-		if !res.update(p, len(p), i == len(detachedSig)-1) {
-			err = getErr("Error updating message header")
+	defer func() {
+		if rErr == nil {
 			return
 		}
+		if C.CryptMsgClose(res.hMsg) == 0 {
+			rErr = errors.Errorf("%v (original error: %v)", getErr("Error closing message"), rErr)
+		}
+	}()
+	for i, p := range detachedSig {
+		if !res.update(p, len(p), i == len(detachedSig)-1) {
+			return res, getErr("Error updating message header")
+		}
 	}
-	return
+	return res, nil
 }
 
 func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
@@ -166,14 +173,10 @@ func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 }
 
 // OpenToEncode creates new Msg in encode mode.
-func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
+func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, rErr error) {
 	var flags C.DWORD
-
-	res = new(Msg)
-
 	if len(options.Signers) == 0 {
-		err = fmt.Errorf("Signer certificates list is empty")
-		return
+		return nil, fmt.Errorf("Signer certificates list is empty")
 	}
 	if options.HashAlg == nil {
 		options.HashAlg = GOST_R3411
@@ -181,28 +184,24 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 	if options.Detached {
 		flags = C.CMSG_DETACHED_FLAG
 	}
-
+	res = new(Msg)
 	si := C.mkStreamInfo(unsafe.Pointer(res), C.BOOL(0))
 	defer C.free(unsafe.Pointer(si))
-
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)))
 	defer C.freeSignedInfo(signedInfo)
-
 	hashOID := C.CString(options.HashAlg.String())
 	defer C.free(unsafe.Pointer(hashOID))
-
 	for i, signerCert := range options.Signers {
 		var (
 			hCryptProv C.HCRYPTPROV_OR_NCRYPT_KEY_HANDLE
 			dwKeySpec  C.DWORD
 		)
 		if 0 == C.CryptAcquireCertificatePrivateKey(signerCert.pCert, 0, nil, &hCryptProv, &dwKeySpec, nil) {
-			err = getErr("Error acquiring certificate private key")
-			return
+			return nil, getErr("Error acquiring certificate private key")
 		}
 		C.setSignedInfo(signedInfo, C.int(i), C.HCRYPTPROV(hCryptProv), signerCert.pCert, dwKeySpec, (*C.CHAR)(hashOID))
 	}
-
+	res.dest = dest
 	res.hMsg = C.CryptMsgOpenToEncode(
 		C.MY_ENC_TYPE,              // encoding type
 		flags,                      // flags
@@ -212,15 +211,13 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, err error) {
 		si,                         // stream information
 	)
 	if res.hMsg == nil {
-		err = getErr("Error opening message for encoding")
-		return
+		return nil, getErr("Error opening message for encoding")
 	}
-	res.dest = dest
-	return
+	return res, nil
 }
 
 // Close needs to be called to release internal message handle
-func (msg Msg) Close() error {
+func (msg *Msg) Close() error {
 	if msg.dest != nil {
 		if !msg.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
@@ -232,7 +229,7 @@ func (msg Msg) Close() error {
 	return nil
 }
 
-func (msg Msg) update(buf []byte, n int, lastCall bool) bool {
+func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
 	var lc C.BOOL
 	if lastCall {
 		lc = C.BOOL(1)

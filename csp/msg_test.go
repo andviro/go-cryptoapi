@@ -2,9 +2,11 @@ package csp
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 
 	"gopkg.in/tylerb/is.v1"
@@ -83,4 +85,39 @@ func TestMsgEncode(t *testing.T) {
 	is.NotErr(err)
 	is.NotErr(msg.Close())
 	is.NotZero(dest.Bytes())
+}
+
+func TestMsgEncrypt_Decrypt(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for encrypt test not provided")
+	}
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+
+	data := bytes.NewBufferString(strings.Repeat("Test data", 10))
+	dest := new(bytes.Buffer)
+	msg, err := OpenToEncrypt(dest, EncryptOptions{
+		Receivers: []Cert{crt},
+	})
+	is.NotErr(err)
+
+	n, err := data.WriteTo(msg)
+	is.NotErr(err)
+	fmt.Println("###", n)
+	is.NotErr(msg.Close())
+	is.NotZero(dest.Bytes())
+	ioutil.WriteFile("test.bin", dest.Bytes(), os.ModePerm)
+
+	msg, err = OpenToDecrypt(dest, store, 0)
+	is.NotErr(err)
+	byteData, err := ioutil.ReadAll(msg)
+	is.NotErr(err)
+	fmt.Println("***", string(byteData))
 }
