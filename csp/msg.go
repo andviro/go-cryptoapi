@@ -33,35 +33,34 @@ static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg, BOOL decode) {
 	return res;
 }
 
-static CMSG_SIGNED_ENCODE_INFO *mkSignedInfo(int n) {
+static CMSG_SIGNED_ENCODE_INFO *mkSignedInfo(int cSigners) {
 	int i;
 
 	CMSG_SIGNED_ENCODE_INFO *res = malloc(sizeof(CMSG_SIGNED_ENCODE_INFO));
 	memset(res, 0, sizeof(CMSG_SIGNED_ENCODE_INFO));
 	res->cbSize = sizeof(CMSG_SIGNED_ENCODE_INFO);
 
-	res->cSigners = n;
-	res->rgSigners = (PCMSG_SIGNER_ENCODE_INFO) malloc(sizeof(CMSG_SIGNER_ENCODE_INFO) * n);
-	memset(res->rgSigners, 0, sizeof(CMSG_SIGNER_ENCODE_INFO) * n);
+	res->cSigners = cSigners;
+	res->rgSigners = (PCMSG_SIGNER_ENCODE_INFO) malloc(sizeof(CMSG_SIGNER_ENCODE_INFO) * cSigners);
+	memset(res->rgSigners, 0, sizeof(CMSG_SIGNER_ENCODE_INFO) * cSigners);
 
-	res->cCertEncoded = n;
-	res->rgCertEncoded =  malloc(sizeof(CERT_BLOB) * n);
-	memset(res->rgCertEncoded, 0, sizeof(CERT_BLOB) * n);
+	res->cCertEncoded = cSigners;
+	res->rgCertEncoded =  malloc(sizeof(CERT_BLOB) * cSigners);
+	memset(res->rgCertEncoded, 0, sizeof(CERT_BLOB) * cSigners);
 
 	return res;
 }
 
+static void setSignedInfo(CMSG_SIGNED_ENCODE_INFO *out, int nSigner, HCRYPTPROV hCryptProv, PCCERT_CONTEXT pSignerCert, DWORD dwKeySpec, LPSTR oid) {
+	out->rgSigners[nSigner].cbSize = sizeof(CMSG_SIGNER_ENCODE_INFO);
+	out->rgSigners[nSigner].pCertInfo = pSignerCert->pCertInfo;
+	out->rgSigners[nSigner].hCryptProv = hCryptProv;
+	out->rgSigners[nSigner].dwKeySpec = dwKeySpec;
+	out->rgSigners[nSigner].HashAlgorithm.pszObjId = oid;
+	out->rgSigners[nSigner].pvHashAuxInfo = NULL;
 
-static void setSignedInfo(CMSG_SIGNED_ENCODE_INFO *out, int n, HCRYPTPROV hCryptProv, PCCERT_CONTEXT pSignerCert, DWORD dwKeySpec, LPSTR oid) {
-	out->rgSigners[n].cbSize = sizeof(CMSG_SIGNER_ENCODE_INFO);
-	out->rgSigners[n].pCertInfo = pSignerCert->pCertInfo;
-	out->rgSigners[n].hCryptProv = hCryptProv;
-	out->rgSigners[n].dwKeySpec = dwKeySpec;
-	out->rgSigners[n].HashAlgorithm.pszObjId = oid;
-	out->rgSigners[n].pvHashAuxInfo = NULL;
-
-	out->rgCertEncoded[n].cbData = pSignerCert->cbCertEncoded;
-	out->rgCertEncoded[n].pbData = pSignerCert->pbCertEncoded;
+	out->rgCertEncoded[nSigner].cbData = pSignerCert->cbCertEncoded;
+	out->rgCertEncoded[nSigner].pbData = pSignerCert->pbCertEncoded;
 }
 
 static void freeSignedInfo(CMSG_SIGNED_ENCODE_INFO *info) {
@@ -69,32 +68,6 @@ static void freeSignedInfo(CMSG_SIGNED_ENCODE_INFO *info) {
 	free(info->rgSigners);
 	free(info);
 }
-
-static CMSG_ENVELOPED_ENCODE_INFO *mkEnvelopedInfo(int numRecipients) {
-    CRYPT_ALGORITHM_IDENTIFIER EncryptAlgorithm;
-    CRYPT_ENCRYPT_MESSAGE_PARA EncryptParams;
-
-    memset(&EncryptAlgorithm, 0, sizeof(CRYPT_ALGORITHM_IDENTIFIER));
-    EncryptAlgorithm.pszObjId = (LPSTR)ENCRYPT_OID;
-    memset(&EncryptParams, 0, sizeof(EncryptParams));
-    EncryptParams.cbSize =  sizeof(EncryptParams);
-    EncryptParams.dwMsgEncodingType = MY_ENCODING_TYPE;
-    if (cprov) {
-        EncryptParams.hCryptProv = cprov->hprov;
-    }
-    EncryptParams.ContentEncryptionAlgorithm = EncryptAlgorithm;
-	memset(&EnvelopedEncodeInfo,
-		   0,
-		   sizeof(CMSG_ENVELOPED_ENCODE_INFO));
-	EnvelopedEncodeInfo.cbSize = sizeof(CMSG_ENVELOPED_ENCODE_INFO);
-	EnvelopedEncodeInfo.hCryptProv = hCryptProv;
-	EnvelopedEncodeInfo.ContentEncryptionAlgorithm = ContentEncryptAlgorithm;
-	EnvelopedEncodeInfo.pvEncryptionAuxInfo = NULL;
-	EnvelopedEncodeInfo.cRecipients = 1;
-	EnvelopedEncodeInfo.rgpRecipients = RecipCertArray;
-}
-
-
 */
 import "C"
 
