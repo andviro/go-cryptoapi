@@ -23,7 +23,7 @@ extern BOOL WINAPI msgEncodeCallback(
 static CMSG_STREAM_INFO *mkStreamInfo(void *pvArg, BOOL decode) {
 	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
 	memset(res, 0, sizeof(CMSG_STREAM_INFO));
-	res->cbContent = 0xffffffff;
+	res->cbContent = CMSG_INDEFINITE_LENGTH;
 	if (decode) {
 		res->pfnStreamOutput = &msgDecodeCallback;
 	} else {
@@ -158,17 +158,20 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (res *Msg, rErr error) {
 }
 
 func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+	fmt.Println("on decode", int(cbData))
 	if int(cbData) > msg.maxN {
 		msg.lastError = fmt.Errorf("Buffer overrun on decoding")
 		return false
 	}
 	C.memcpy(msg.data, unsafe.Pointer(pbData), C.size_t(cbData))
 	msg.n = int(cbData)
+	fmt.Println("decode", msg.n)
 	return true
 }
 
 func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	msg.n, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
+	fmt.Println("encode", msg.n)
 	return msg.lastError == nil
 }
 
@@ -179,7 +182,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, rErr error) 
 		return nil, fmt.Errorf("Signer certificates list is empty")
 	}
 	if options.HashAlg == nil {
-		options.HashAlg = GOST_R3411
+		options.HashAlg = GOST_R3411_12_256
 	}
 	if options.Detached {
 		flags = C.CMSG_DETACHED_FLAG
@@ -219,6 +222,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (res *Msg, rErr error) 
 // Close needs to be called to release internal message handle
 func (msg *Msg) Close() error {
 	if msg.dest != nil {
+		fmt.Println("###", msg.n)
 		if !msg.update([]byte{0}, 0, true) {
 			return getErr("Error finalizing message")
 		}
@@ -234,44 +238,37 @@ func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
 	if lastCall {
 		lc = C.BOOL(1)
 	}
+	fmt.Println("---", len(buf), n)
 	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
 // Read parses message input stream and fills buf parameter with decoded data chunk
-func (msg *Msg) Read(buf []byte) (n int, err error) {
+func (msg *Msg) Read(buf []byte) (int, error) {
 	if msg.eof {
 		return 0, io.EOF
 	}
 	nRead, err := msg.src.Read(buf)
 	if err != nil && err != io.EOF {
-		return
+		return nRead, err
 	}
-
 	msg.data = unsafe.Pointer(&buf[0])
 	msg.n = 0
 	msg.maxN = len(buf)
 	msg.eof = (err == io.EOF)
-
 	ok := msg.update(buf, nRead, msg.eof)
-	n = msg.n
 	if !ok {
-		err = getErr("Error updating message body")
-		return
+		return 0, getErr("Error updating message body while reading")
 	}
-	err = msg.lastError
-	return
+	return msg.n, msg.lastError
 }
 
 // Write encodes provided bytes into message output data stream
 func (msg *Msg) Write(buf []byte) (n int, err error) {
-	ok := msg.update(buf, len(buf), false)
-	if !ok {
-		err = getErr("Error updating message body")
-		return
+	if ok := msg.update(buf, len(buf), false); !ok {
+		return 0, getErr("Error updating message body while writing")
 	}
-	n = len(buf)
-	err = msg.lastError
-	return
+	fmt.Println("***", msg.n)
+	return len(buf), msg.lastError
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream

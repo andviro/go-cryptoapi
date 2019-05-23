@@ -32,6 +32,7 @@ const (
 	ErrBadKeyset      ErrorCode = C.NTE_BAD_KEYSET & (1<<32 - 1)               // Operation on unknown container
 	ErrStreamNotReady ErrorCode = C.CRYPT_E_STREAM_MSG_NOT_READY & (1<<32 - 1) // Returned until stream header is parsed
 	ErrCryptNotFound  ErrorCode = C.CRYPT_E_NOT_FOUND & (1<<32 - 1)
+	ErrMoreData  ErrorCode = C.ERROR_MORE_DATA & (1<<32 - 1)
 )
 
 // Error provides error type

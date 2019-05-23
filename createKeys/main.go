@@ -21,7 +21,7 @@ func main() {
 		}
 	}
 	ctx, err := csp.AcquireCtx(csp.Container("TestGoCryptoAPIContainer"), prov.Name, prov.Type, csp.CryptNewKeyset)
-	if cspErr, ok := err.(csp.CspError); ok {
+	if cspErr, ok := err.(csp.Error); ok {
 		if cspErr.Code == csp.ErrExists {
 			fmt.Println("Container already exists")
 			return

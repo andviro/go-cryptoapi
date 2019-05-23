@@ -85,6 +85,7 @@ func TestMsgEncode(t *testing.T) {
 	is.NotErr(err)
 	is.NotErr(msg.Close())
 	is.NotZero(dest.Bytes())
+	ioutil.WriteFile("test.enc", dest.Bytes(), os.ModePerm)
 }
 
 func TestMsgEncrypt_Decrypt(t *testing.T) {
@@ -101,16 +102,15 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	is.NotErr(err)
 	defer crt.Close()
 
-	data := bytes.NewBufferString(strings.Repeat("Test data", 10))
+	data := bytes.NewBufferString(strings.Repeat("Test data", 100))
 	dest := new(bytes.Buffer)
 	msg, err := OpenToEncrypt(dest, EncryptOptions{
 		Receivers: []Cert{crt},
 	})
 	is.NotErr(err)
 
-	n, err := data.WriteTo(msg)
+	_, err = data.WriteTo(msg)
 	is.NotErr(err)
-	fmt.Println("###", n)
 	is.NotErr(msg.Close())
 	is.NotZero(dest.Bytes())
 	ioutil.WriteFile("test.bin", dest.Bytes(), os.ModePerm)
@@ -119,5 +119,5 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	is.NotErr(err)
 	byteData, err := ioutil.ReadAll(msg)
 	is.NotErr(err)
-	fmt.Println("***", string(byteData))
+	fmt.Println("???", string(byteData))
 }
