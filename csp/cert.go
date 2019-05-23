@@ -5,7 +5,6 @@ import "C"
 
 import (
 	"encoding/hex"
-	"fmt"
 	"unsafe"
 )
 
@@ -106,7 +105,6 @@ func (c *Cert) Context() (*Ctx, error) {
 	if 0 == C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) {
 		return nil, getErr("Error getting certificate context property")
 	}
-	fmt.Println("prov ", provInfo)
 	var hProv C.HCRYPTPROV
 	if C.CryptAcquireContextW(&hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) == 0 {
 		return nil, getErr("Error acquiring context")

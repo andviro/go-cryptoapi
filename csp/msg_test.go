@@ -2,7 +2,6 @@ package csp
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -85,7 +84,7 @@ func TestMsgEncode(t *testing.T) {
 	is.NotErr(err)
 	is.NotErr(msg.Close())
 	is.NotZero(dest.Bytes())
-	ioutil.WriteFile("test.enc", dest.Bytes(), os.ModePerm)
+	ioutil.WriteFile("test.p7s", dest.Bytes(), os.ModePerm)
 }
 
 func TestMsgEncrypt_Decrypt(t *testing.T) {
@@ -119,5 +118,5 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	is.NotErr(err)
 	byteData, err := ioutil.ReadAll(msg)
 	is.NotErr(err)
-	fmt.Println("???", string(byteData))
+	ioutil.WriteFile("test.txt", byteData, os.ModePerm)
 }
