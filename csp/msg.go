@@ -27,6 +27,7 @@ import "C"
 
 import (
 	"encoding/asn1"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"unsafe"
@@ -61,6 +62,7 @@ func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
 	if lastCall {
 		lc = C.BOOL(1)
 	}
+	fmt.Println("update", n, lastCall)
 	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 

@@ -7,6 +7,7 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
 import (
+	"fmt"
 	"io"
 	"unsafe"
 
@@ -21,7 +22,7 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (msg *Msg, rErr error) {
 		si    *C.CMSG_STREAM_INFO
 	)
 	res := &Msg{}
-	res.callbackID = registerCallback(res.onDecode)
+	res.callbackID = registerCallback(res.onUpdate)
 	if len(detachedSig) > 0 {
 		flags = C.CMSG_DETACHED_FLAG
 		si = nil
@@ -82,7 +83,8 @@ func (msg *Msg) Read(buf []byte) (int, error) {
 	return msg.src.Read(buf)
 }
 
-func (msg *Msg) onDecode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+func (msg *Msg) onUpdate(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+	fmt.Println("on update", cbData, fFinal)
 	_, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
 	return msg.lastError == nil
 }

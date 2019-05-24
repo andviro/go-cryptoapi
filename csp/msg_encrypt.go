@@ -56,7 +56,7 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 		return nil, err
 	}
 	res := new(Msg)
-	res.callbackID = registerCallback(res.onEncode)
+	res.callbackID = registerCallback(res.onUpdate)
 	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 

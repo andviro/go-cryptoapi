@@ -72,7 +72,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 		flags = C.CMSG_DETACHED_FLAG
 	}
 	res := &Msg{dest: dest}
-	res.callbackID = registerCallback(res.onDecode)
+	res.callbackID = registerCallback(res.onUpdate)
 	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)))
@@ -111,13 +111,9 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 	return res, nil
 }
 
-func (msg *Msg) onEncode(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	_, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
-	return msg.lastError == nil
-}
-
 // Write encodes provided bytes into message output data stream
 func (msg *Msg) Write(buf []byte) (int, error) {
+	fmt.Println("write", len(buf))
 	if ok := msg.update(buf, len(buf), false); !ok {
 		return 0, getErr("Error updating message body while writing")
 	}

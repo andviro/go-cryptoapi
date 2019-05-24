@@ -101,22 +101,26 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	is.NotErr(err)
 	defer crt.Close()
 
-	data := bytes.NewBufferString(strings.Repeat("Test data", 100))
 	dest := new(bytes.Buffer)
-	msg, err := OpenToEncrypt(dest, EncryptOptions{
-		Receivers: []Cert{crt},
+	t.Run("encrypt", func(t *testing.T) {
+		data := bytes.NewBufferString(strings.Repeat("Test data", 100000))
+		msg, err := OpenToEncrypt(dest, EncryptOptions{
+			Receivers: []Cert{crt},
+		})
+		is.NotErr(err)
+
+		_, err = data.WriteTo(msg)
+		is.NotErr(err)
+		is.NotErr(msg.Close())
+		is.NotZero(dest.Bytes())
+		ioutil.WriteFile("test.bin", dest.Bytes(), os.ModePerm)
 	})
-	is.NotErr(err)
 
-	_, err = data.WriteTo(msg)
-	is.NotErr(err)
-	is.NotErr(msg.Close())
-	is.NotZero(dest.Bytes())
-	ioutil.WriteFile("test.bin", dest.Bytes(), os.ModePerm)
-
-	msg, err = OpenToDecrypt(dest, store, 0)
-	is.NotErr(err)
-	byteData, err := ioutil.ReadAll(msg)
-	is.NotErr(err)
-	ioutil.WriteFile("test.txt", byteData, os.ModePerm)
+	t.Run("decrypt", func(t *testing.T) {
+		msg, err := OpenToDecrypt(dest, store, 10000)
+		is.NotErr(err)
+		byteData, err := ioutil.ReadAll(msg)
+		is.NotErr(err)
+		ioutil.WriteFile("test.txt", byteData, os.ModePerm)
+	})
 }
