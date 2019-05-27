@@ -56,7 +56,7 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 		return nil, err
 	}
 	res := new(Msg)
-	res.callbackID = registerCallback(res.onUpdate)
+	res.callbackID = registerCallback(res.onWrite)
 	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 
@@ -66,7 +66,7 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	for i, receiverCert := range options.Receivers {
 		C.setRecipientInfo(envelopedInfo, C.int(i), receiverCert.pCert)
 	}
-	res.dest = dest
+	res.w = dest
 	res.hMsg = C.CryptMsgOpenToEncode(
 		C.MY_ENC_TYPE,                 // encoding type
 		0,                             // flags

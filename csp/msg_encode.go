@@ -71,8 +71,8 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 	if options.Detached {
 		flags = C.CMSG_DETACHED_FLAG
 	}
-	res := &Msg{dest: dest}
-	res.callbackID = registerCallback(res.onUpdate)
+	res := &Msg{w: dest}
+	res.callbackID = registerCallback(res.onWrite)
 	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)))
@@ -114,7 +114,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 // Write encodes provided bytes into message output data stream
 func (msg *Msg) Write(buf []byte) (int, error) {
 	fmt.Println("write", len(buf))
-	if ok := msg.update(buf, len(buf), false); !ok {
+	if ok := msg.update(buf, len(buf), msg.lastError != nil); !ok {
 		return 0, getErr("Error updating message body while writing")
 	}
 	return len(buf), msg.lastError
@@ -123,13 +123,11 @@ func (msg *Msg) Write(buf []byte) (int, error) {
 // Close needs to be called to release internal message handle and flush
 // underlying encoded message.
 func (msg *Msg) Close() error {
-	if msg.src == nil {
-		if !msg.update([]byte{0}, 0, true) {
-			return getErr("Error finalizing message")
-		}
+	if msg.w != nil && !msg.update([]byte{0}, 0, true) {
+		return getErr("Error finalizing message")
 	}
 	if C.CryptMsgClose(msg.hMsg) == 0 {
 		return getErr("Error closing message")
 	}
-	return msg.lastError
+	return nil
 }

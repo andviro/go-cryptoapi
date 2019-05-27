@@ -27,9 +27,7 @@ import "C"
 
 import (
 	"encoding/asn1"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"unsafe"
 )
 
@@ -50,28 +48,15 @@ var (
 
 // Msg encapsulates stream decoder of PKCS7 message
 type Msg struct {
-	hMsg       C.HCRYPTMSG
-	src        io.Reader
-	dest       io.Writer
-	callbackID int64
-	lastError  error
-}
-
-func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
-	var lc C.BOOL
-	if lastCall {
-		lc = C.BOOL(1)
-	}
-	fmt.Println("update", n, lastCall)
-	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
+	hMsg          C.HCRYPTMSG
+	w             io.Writer
+	callbackID    int64
+	lastError     error
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream
 // is fully read and parsed.
 func (msg *Msg) CertStore() (res CertStore, err error) {
-	if _, err = ioutil.ReadAll(msg); err != nil {
-		return
-	}
 	if res.hStore = C.openStoreMsg(msg.hMsg); res.hStore == nil {
 		err = getErr("Error opening message cert store")
 		return
@@ -79,13 +64,9 @@ func (msg *Msg) CertStore() (res CertStore, err error) {
 	return
 }
 
-// Verify verifies message signature against signer certificate. As a
-// side-effect, source stream is fully read and parsed.
-func (msg *Msg) Verify(c Cert) (err error) {
-	if _, err = ioutil.ReadAll(msg); err != nil {
-		return
-	}
-	if 0 == C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) {
+// Verify verifies message signature against signer certificate
+func (msg *Msg) Verify(c Cert) error {
+	if C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) == 0 {
 		return getErr("Error verifying message signature")
 	}
 	return nil

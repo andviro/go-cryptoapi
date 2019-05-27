@@ -16,28 +16,37 @@ import (
 
 // OpenToDecode creates new Msg in decode mode. If detachedSig parameter is specified,
 // it must contain detached P7S signature
-func OpenToDecode(src io.Reader, detachedSig ...[]byte) (msg *Msg, rErr error) {
-	var (
-		flags C.DWORD
-		si    *C.CMSG_STREAM_INFO
-	)
+func OpenToDecode(dest io.Writer) (msg *Msg, rErr error) {
 	res := &Msg{}
-	res.callbackID = registerCallback(res.onUpdate)
-	if len(detachedSig) > 0 {
-		flags = C.CMSG_DETACHED_FLAG
-		si = nil
-	} else {
-		si = C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
-		defer C.free(unsafe.Pointer(si))
-	}
-	res.src = src
+	res.callbackID = registerCallback(res.onWrite)
+	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
+	defer C.free(unsafe.Pointer(si))
 	res.hMsg = C.CryptMsgOpenToDecode(
 		C.MY_ENC_TYPE, // encoding type
-		flags,         // flags
+		0,             // flags
 		0,             // message type (get from message)
 		0,             // default cryptographic provider
 		nil,           // recipient information
 		si,            // stream info
+	)
+	if res.hMsg == nil {
+		return nil, getErr("Error opening message for decoding")
+	}
+	res.w = dest
+	return res, nil
+}
+
+// OpenToVerify creates new Msg in decode mode. If detachedSig parameter is specified,
+// it must contain detached P7S signature
+func OpenToVerify(detachedSig ...[]byte) (msg *Msg, rErr error) {
+	res := &Msg{}
+	res.hMsg = C.CryptMsgOpenToDecode(
+		C.MY_ENC_TYPE,        // encoding type
+		C.CMSG_DETACHED_FLAG, // flags
+		0,                    // message type (get from message)
+		0,                    // default cryptographic provider
+		nil,                  // recipient information
+		nil,                  // stream info
 	)
 	if res.hMsg == nil {
 		return nil, getErr("Error opening message for decoding")
@@ -55,36 +64,24 @@ func OpenToDecode(src io.Reader, detachedSig ...[]byte) (msg *Msg, rErr error) {
 			return res, getErr("Error updating message header")
 		}
 	}
-	pr, pw := io.Pipe()
-	res.src, res.dest = pr, pw
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := src.Read(buf)
-			if err != nil && err != io.EOF {
-				pw.CloseWithError(err)
-				return
-			}
-			if ok := res.update(buf, n, err == io.EOF); !ok {
-				pw.CloseWithError(getErr("Error updating message body while writing"))
-				return
-			}
-			if err == io.EOF {
-				pw.CloseWithError(err)
-				return
-			}
-		}
-	}()
 	return res, nil
 }
 
-// Read parses message input stream and fills buf parameter with decoded data chunk
-func (msg *Msg) Read(buf []byte) (int, error) {
-	return msg.src.Read(buf)
+func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
+	var lc C.BOOL
+	if lastCall {
+		lc = C.BOOL(1)
+	}
+	fmt.Println("update", n, lastCall)
+	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
-func (msg *Msg) onUpdate(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+func (msg *Msg) onWrite(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	fmt.Println("on update", cbData, fFinal)
-	_, msg.lastError = msg.dest.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData)))
+	if msg.w != nil {
+		if _, err := msg.w.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData))); err != nil {
+			msg.lastError = err
+		}
+	}
 	return msg.lastError == nil
 }
