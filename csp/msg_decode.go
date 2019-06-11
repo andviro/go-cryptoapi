@@ -7,7 +7,6 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
 import (
-	"fmt"
 	"io"
 	"unsafe"
 
@@ -72,12 +71,10 @@ func (msg *Msg) update(buf []byte, n int, lastCall bool) bool {
 	if lastCall {
 		lc = C.BOOL(1)
 	}
-	fmt.Println("update", n, lastCall)
 	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
 
 func (msg *Msg) onWrite(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	fmt.Println("on update", cbData, fFinal)
 	if msg.w != nil {
 		if _, err := msg.w.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData))); err != nil {
 			msg.lastError = err

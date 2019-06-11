@@ -113,7 +113,6 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 
 // Write encodes provided bytes into message output data stream
 func (msg *Msg) Write(buf []byte) (int, error) {
-	fmt.Println("write", len(buf))
 	if ok := msg.update(buf, len(buf), msg.lastError != nil); !ok {
 		return 0, getErr("Error updating message body while writing")
 	}

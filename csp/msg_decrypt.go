@@ -7,7 +7,6 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
 import (
-	"fmt"
 	"io"
 	"unsafe"
 
@@ -52,7 +51,6 @@ func OpenToDecrypt(dest io.Writer, store *CertStore, maxHeaderSize int) (msg *De
 
 // Write encodes provided bytes into message output data stream
 func (msg *Decryptor) Write(buf []byte) (int, error) {
-	fmt.Println("write", len(buf))
 	if ok := msg.update(buf, len(buf), msg.lastError != nil); !ok {
 		return 0, getErr("Error updating message body while writing")
 	}
@@ -74,7 +72,6 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 		return 0, getErr("Error acquiring message recipient count")
 	}
 	for i := 0; i < int(numRecipients); i++ {
-		fmt.Println("recipient", i)
 		cert, err := msg.getRecipientCert(i, msg.store)
 		if err != nil {
 			return 0, err
@@ -125,7 +122,6 @@ func (msg *Decryptor) getRecipientCert(i int, store *CertStore) (*Cert, error) {
 }
 
 func (msg *Decryptor) onWrite(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	fmt.Println("on update", cbData, fFinal)
 	if _, err := msg.w.Write(C.GoBytes(unsafe.Pointer(pbData), C.int(cbData))); err != nil {
 		msg.lastError = err
 	}
@@ -137,6 +133,5 @@ func (msg *Decryptor) update(buf []byte, n int, lastCall bool) bool {
 	if lastCall {
 		lc = C.BOOL(1)
 	}
-	fmt.Println("update", n, lastCall)
 	return C.CryptMsgUpdate(msg.hMsg, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(n), lc) != 0
 }
