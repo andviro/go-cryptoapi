@@ -92,3 +92,22 @@ func (c Cert) MustSubjectID() string {
 func (c Cert) Bytes() []byte {
 	return C.GoBytes(unsafe.Pointer(c.pCert.pbCertEncoded), C.int(c.pCert.cbCertEncoded))
 }
+
+// Context returns cryptographic context associated with the certificate
+func (c *Cert) Context() (*Ctx, error) {
+	var provInfo *C.CRYPT_KEY_PROV_INFO
+	cbData := C.DWORD(0)
+	if 0 == C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, nil, &cbData) {
+		return nil, getErr("Error getting certificate context property length")
+	}
+	provInfo = (*C.CRYPT_KEY_PROV_INFO)(C.malloc(C.size_t(cbData)))
+	defer C.free(unsafe.Pointer(provInfo))
+	if 0 == C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) {
+		return nil, getErr("Error getting certificate context property")
+	}
+	var hProv C.HCRYPTPROV
+	if C.CryptAcquireContextW(&hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) == 0 {
+		return nil, getErr("Error acquiring context")
+	}
+	return &Ctx{hProv: hProv}, nil
+}

@@ -14,6 +14,8 @@
 #   include <CSP_WinDef.h>
 #   include <CSP_WinCrypt.h>
 #endif
+#include <WinCryptEx.h>
 
 #define MY_ENC_TYPE (X509_ASN_ENCODING | PKCS_7_ASN_ENCODING)
+#define ENCRYPT_OID szOID_CP_GOST_28147
 #endif

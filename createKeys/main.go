@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/andviro/go-cryptoapi/csp"
+	"github.com/andviro/go-cryptoapi/v2/csp"
 )
 
 func init() {
@@ -21,7 +21,7 @@ func main() {
 		}
 	}
 	ctx, err := csp.AcquireCtx(csp.Container("TestGoCryptoAPIContainer"), prov.Name, prov.Type, csp.CryptNewKeyset)
-	if cspErr, ok := err.(csp.CspError); ok {
+	if cspErr, ok := err.(csp.Error); ok {
 		if cspErr.Code == csp.ErrExists {
 			fmt.Println("Container already exists")
 			return

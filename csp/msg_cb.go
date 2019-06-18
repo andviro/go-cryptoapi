@@ -7,15 +7,30 @@ package csp
 import "C"
 
 import (
+	"sync"
 	"unsafe"
 )
 
-//export msgDecodeCallback
-func msgDecodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	return (*Msg)(pvArg).onDecode(pbData, cbData, fFinal)
+type cb func(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool
+
+var callbacks = make(map[int64]cb)
+
+var idx int64
+
+var mu sync.RWMutex
+
+func registerCallback(cb cb) int64 {
+	mu.Lock()
+	defer mu.Unlock()
+	idx++
+	callbacks[idx] = cb
+	return idx
 }
 
-//export msgEncodeCallback
-func msgEncodeCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	return (*Msg)(pvArg).onEncode(pbData, cbData, fFinal)
+//export msgStreamCallback
+func msgStreamCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
+	idx := (*int64)(pvArg)
+	mu.RLock()
+	defer mu.RUnlock()
+	return callbacks[*idx](pbData, cbData, fFinal)
 }
