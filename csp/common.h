@@ -9,6 +9,13 @@
 #   include <windows.h>
 #   include <wincrypt.h>
 #   include <winerror.h>
+typedef struct _CMSG_CTRL_DECRYPT_PARA_OVERRIDE {
+    DWORD cbSize;
+    HCRYPTPROV hCryptProv;
+    DWORD dwKeySpec;
+    DWORD dwRecipientIndex;
+} CMSG_CTRL_DECRYPT_PARA_OVERRIDE,*PCMSG_CTRL_DECRYPT_PARA_OVERRIDE;
+#define CMSG_CTRL_DECRYPT_PARA CMSG_CTRL_DECRYPT_PARA_OVERRIDE
 #else
 #   define HCRYPTPROV_OR_NCRYPT_KEY_HANDLE HCRYPTPROV
 #   include <CSP_WinDef.h>
