@@ -10,7 +10,7 @@ import (
 	"io"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 type Decryptor struct {

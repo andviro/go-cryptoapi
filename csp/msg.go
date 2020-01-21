@@ -48,10 +48,10 @@ var (
 
 // Msg encapsulates stream decoder of PKCS7 message
 type Msg struct {
-	hMsg          C.HCRYPTMSG
-	w             io.Writer
-	callbackID    int64
-	lastError     error
+	hMsg       C.HCRYPTMSG
+	w          io.Writer
+	callbackID int64
+	lastError  error
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream

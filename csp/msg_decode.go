@@ -7,10 +7,9 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
 import (
+	"fmt"
 	"io"
 	"unsafe"
-
-	"github.com/pkg/errors"
 )
 
 // OpenToDecode creates new Msg in decode mode. If detachedSig parameter is specified,
@@ -55,7 +54,7 @@ func OpenToVerify(detachedSig ...[]byte) (msg *Msg, rErr error) {
 			return
 		}
 		if C.CryptMsgClose(res.hMsg) == 0 {
-			rErr = errors.Errorf("%v (original error: %v)", getErr("Error closing message"), rErr)
+			rErr = fmt.Errorf("%v (original error: %v)", getErr("Error closing message"), rErr)
 		}
 	}()
 	for i, p := range detachedSig {

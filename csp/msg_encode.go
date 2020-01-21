@@ -48,8 +48,6 @@ import (
 	"fmt"
 	"io"
 	"unsafe"
-
-	"github.com/pkg/errors"
 )
 
 // EncodeOptions specifies message creation details
@@ -105,7 +103,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 			return
 		}
 		if C.CryptMsgClose(res.hMsg) == 0 {
-			rErr = errors.Errorf("%v (original error: %v)", getErr("Error closing message"), rErr)
+			rErr = getErr(fmt.Sprintf("Error closing message (original error: %v)", rErr))
 		}
 	}()
 	return res, nil
