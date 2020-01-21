@@ -101,6 +101,42 @@ func TestMsgEncode(t *testing.T) {
 	})
 }
 
+func TestMsgEncode_Detached(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for sign test not provided")
+	}
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+
+	data := bytes.NewBufferString("Test data")
+	dest := new(bytes.Buffer)
+	t.Run("sign", func(t *testing.T) {
+		msg, err := OpenToEncode(dest, EncodeOptions{
+			Signers:  []Cert{crt},
+			Detached: true,
+		})
+		is.NotErr(err)
+		_, err = data.WriteTo(msg)
+		is.NotErr(err)
+		is.NotErr(msg.Close())
+		is.NotZero(dest.Bytes())
+	})
+	t.Run("verify", func(t *testing.T) {
+		msg, err := OpenToVerify(dest.Bytes())
+		is.NotErr(err)
+		_, err = dest.WriteTo(msg)
+		is.NotErr(err)
+		is.NotErr(msg.Close())
+	})
+}
+
 func TestMsgEncrypt_Decrypt(t *testing.T) {
 	if signCertThumb == "" {
 		t.Skip("certificate for encrypt test not provided")
