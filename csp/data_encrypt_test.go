@@ -1,6 +1,9 @@
 package csp
 
 import (
+	"bytes"
+	"io"
+	"strings"
 	"testing"
 
 	"gopkg.in/tylerb/is.v1"
@@ -21,7 +24,7 @@ func TestEncryptData(t *testing.T) {
 	defer crt.Close()
 
 	var data []byte
-	testData := "Test string"
+	testData := strings.Repeat("Test data", 10)
 	t.Run("encrypt data bytes", func(t *testing.T) {
 		data, err = EncryptData([]byte(testData), EncryptOptions{
 			Receivers: []Cert{crt},
@@ -33,5 +36,13 @@ func TestEncryptData(t *testing.T) {
 		res, err := DecryptData(data, store)
 		is.NotErr(err)
 		is.Equal(string(res), testData)
+	})
+	t.Run("decrypt stream", func(t *testing.T) {
+		newDest := new(bytes.Buffer)
+		msg, err := OpenToDecrypt(newDest, store, 10000)
+		is.NotErr(err)
+		_, err = io.Copy(msg, bytes.NewReader(data))
+		is.NotErr(err)
+		is.Equal(newDest.String(), testData)
 	})
 }

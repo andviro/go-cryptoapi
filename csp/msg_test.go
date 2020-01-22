@@ -152,6 +152,7 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	defer crt.Close()
 
 	dest := new(bytes.Buffer)
+	var temp []byte
 	testData := strings.Repeat("Test data", 100000)
 	t.Run("encrypt", func(t *testing.T) {
 		data := bytes.NewBufferString(testData)
@@ -163,9 +164,9 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 		_, err = io.Copy(msg, data)
 		is.NotErr(err)
 		is.NotErr(msg.Close())
-		is.NotZero(dest.Bytes())
+		temp = dest.Bytes()
+		is.NotZero(temp)
 	})
-
 	t.Run("decrypt", func(t *testing.T) {
 		newDest := new(bytes.Buffer)
 		msg, err := OpenToDecrypt(newDest, store, 10000)
@@ -173,5 +174,10 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 		_, err = io.Copy(msg, dest)
 		is.NotErr(err)
 		is.Equal(newDest.String(), testData)
+	})
+	t.Run("decrypt bytes", func(t *testing.T) {
+		res, err := DecryptData(temp, store)
+		is.NotErr(err)
+		is.Equal(string(res), testData)
 	})
 }

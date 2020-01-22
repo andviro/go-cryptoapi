@@ -7,6 +7,7 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
 import (
+	"fmt"
 	"io"
 	"unsafe"
 
@@ -51,6 +52,7 @@ func OpenToDecrypt(dest io.Writer, store *CertStore, maxHeaderSize int) (msg *De
 
 // Write encodes provided bytes into message output data stream
 func (msg *Decryptor) Write(buf []byte) (int, error) {
+	fmt.Println("###", len(buf))
 	if ok := msg.update(buf, len(buf), msg.lastError != nil); !ok {
 		return 0, getErr("Error updating message body while writing")
 	}
@@ -63,16 +65,23 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 		case ErrStreamNotReady:
 			return len(buf), msg.lastError
 		default:
-			return 0, getErr("Error acquiring message envelope algorithm")
+			return 0, getErr("Error acquiring message envelope algorithm length")
 		}
 	}
+	cid := (*C.CRYPT_ALGORITHM_IDENTIFIER)(C.malloc(C.size_t(cbData)))
+	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_ENVELOPE_ALGORITHM_PARAM, 0, unsafe.Pointer(cid), &cbData) {
+		return 0, getErr("Error acquiring message envelope algorithm")
+	}
+	fmt.Printf("??? %q\n", C.GoString((*C.char)(cid.pszObjId)))
 	cbData = C.DWORD(C.sizeof_DWORD)
 	var numRecipients C.DWORD
 	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_COUNT_PARAM, 0, unsafe.Pointer(&numRecipients), &cbData) {
 		return 0, getErr("Error acquiring message recipient count")
 	}
+	fmt.Println("???", numRecipients)
 	for i := 0; i < int(numRecipients); i++ {
 		cert, err := msg.getRecipientCert(i, msg.store)
+		fmt.Println("***", cert, err)
 		if err != nil {
 			return 0, err
 		} else if cert == nil {
@@ -82,6 +91,7 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		fmt.Println("***", cert)
 		return msg.proceed(i, len(buf), ctx)
 	}
 	return 0, errors.New("no recipients found")
