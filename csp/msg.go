@@ -49,6 +49,7 @@ var (
 // Msg encapsulates stream decoder of PKCS7 message
 type Msg struct {
 	hMsg       C.HCRYPTMSG
+	signerKeys []C.HCRYPTPROV_OR_NCRYPT_KEY_HANDLE
 	w          io.Writer
 	callbackID int64
 	lastError  error
