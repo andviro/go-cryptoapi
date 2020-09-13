@@ -86,6 +86,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 			return nil, getErr("Error acquiring certificate private key")
 		}
 		C.setSignedInfo(signedInfo, C.int(i), C.HCRYPTPROV(hCryptProv), signerCert.pCert, dwKeySpec, (*C.CHAR)(hashOID))
+		res.signerKeys = append(res.signerKeys, hCryptProv)
 	}
 	res.hMsg = C.CryptMsgOpenToEncode(
 		C.MY_ENC_TYPE,              // encoding type
@@ -101,9 +102,8 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 	defer func() {
 		if rErr == nil {
 			return
-		}
-		if C.CryptMsgClose(res.hMsg) == 0 {
-			rErr = getErr(fmt.Sprintf("Error closing message (original error: %v)", rErr))
+		} else if err := res.cleanup(); err != nil {
+			rErr = fmt.Errorf("Error closing msg: %v (original error: %v)", err, rErr)
 		}
 	}()
 	return res, nil
@@ -117,14 +117,23 @@ func (msg *Msg) Write(buf []byte) (int, error) {
 	return len(buf), msg.lastError
 }
 
+func (msg *Msg) cleanup() error {
+	for _, hProv := range msg.signerKeys {
+		if C.CryptReleaseContext(hProv, 0) == 0 {
+			return getErr("Error releasing context")
+		}
+	}
+	if C.CryptMsgClose(msg.hMsg) == 0 {
+		return getErr("Error closing message")
+	}
+	return nil
+}
+
 // Close needs to be called to release internal message handle and flush
 // underlying encoded message.
 func (msg *Msg) Close() error {
 	if msg.w != nil && !msg.update([]byte{0}, 0, true) {
 		return getErr("Error finalizing message")
 	}
-	if C.CryptMsgClose(msg.hMsg) == 0 {
-		return getErr("Error closing message")
-	}
-	return nil
+	return msg.cleanup()
 }
