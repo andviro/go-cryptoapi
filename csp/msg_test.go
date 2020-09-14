@@ -175,3 +175,35 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 		is.Equal(newDest.String(), testData)
 	})
 }
+
+func BenchmarkMsgEncode(b *testing.B) {
+	if signCertThumb == "" {
+		b.Skip("certificate for sign test not provided")
+	}
+	b.ReportAllocs()
+	store, err := SystemStore("MY")
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
+	crt, err := store.GetByThumb(signCertThumb)
+	if err != nil {
+		panic(err)
+	}
+	defer crt.Close()
+	data := bytes.NewBufferString("Test data")
+	dest := new(bytes.Buffer)
+	for i := 0; i < b.N; i++ {
+		msg, err := OpenToEncode(dest, EncodeOptions{
+			Signers: []Cert{crt},
+		})
+		if err != nil {
+			panic(err)
+		} else if _, err = data.WriteTo(msg); err != nil {
+			panic(err)
+		} else if err = msg.Close(); err != nil {
+			panic(err)
+		}
+		dest.Reset()
+	}
+}
