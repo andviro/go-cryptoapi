@@ -13,6 +13,11 @@ type Cert struct {
 	pCert C.PCCERT_CONTEXT
 }
 
+// IsZero returns true if certificate struct was not initialized
+func (c Cert) IsZero() bool {
+	return c.pCert == nil
+}
+
 // ParseCert creates certificate context from byte slice
 func ParseCert(buf []byte) (res Cert, err error) {
 	bufBytes := C.CBytes(buf)

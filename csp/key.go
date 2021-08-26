@@ -39,6 +39,10 @@ type Key struct {
 	hKey C.HCRYPTKEY
 }
 
+func (k Key) IsZero() bool {
+	return k.hKey == 0
+}
+
 // Key extracts public key from container represented by context ctx, from
 // key pair given by at parameter. It must be released after use by calling
 // Close method.

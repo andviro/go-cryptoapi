@@ -7,58 +7,57 @@ package csp
 import "C"
 
 import (
-	"fmt"
+	"encoding/asn1"
 	"hash"
 	"unsafe"
 )
 
 // Hash encapsulates GOST hash
 type Hash struct {
-	hHash  C.HCRYPTHASH
-	hKey   C.HCRYPTKEY
-	hProv  C.HCRYPTPROV
-	length int
+	hHash          C.HCRYPTHASH
+	hKey           C.HCRYPTKEY
+	hProv          C.HCRYPTPROV
+	algID          C.ALG_ID
+	dwKeySpec      C.DWORD
+	mustReleaseCtx C.BOOL
+	keyHash        *Hash
 }
 
-func (h *Hash) cAlg() C.ALG_ID {
-	switch h.length {
-	case 2001:
+var _ hash.Hash = (*Hash)(nil)
+
+// HashOptions describe hash creation parameters
+type HashOptions struct {
+	HashAlg  asn1.ObjectIdentifier // Hash algorithm ID
+	SignCert Cert                  // Certificate with a reference to private key container used to sign the hash
+	HMACKey  Key                   // HMAC key for creating hash in HMAC mode
+}
+
+func (ho *HashOptions) cAlg() C.ALG_ID {
+	switch {
+	case GOST_R3411.Equal(ho.HashAlg):
 		return C.CALG_GR3411
-	case 512:
+	case GOST_R3411_12_512.Equal(ho.HashAlg):
 		return C.CALG_GR3411_2012_512
 	}
 	return C.CALG_GR3411_2012_256
 }
 
-type HashOpt func(dest *Hash)
-
-func HashCtx(ctx Ctx) HashOpt {
-	return func(dest *Hash) {
-		dest.hProv = ctx.hProv
+func NewHash(options HashOptions) (*Hash, error) {
+	res := &Hash{algID: options.cAlg()}
+	if !options.HMACKey.IsZero() {
+		res.hKey = options.HMACKey.hKey
 	}
-}
-
-func HashKey(key Key) HashOpt {
-	return func(dest *Hash) {
-		dest.hKey = key.hKey
-	}
-}
-
-var _ hash.Hash = (*Hash)(nil)
-
-func NewHash(length int, options ...HashOpt) (*Hash, error) {
-	res := &Hash{}
-	for _, opt := range options {
-		opt(res)
-	}
-	if res.hProv == 0 {
+	if options.SignCert.IsZero() {
 		ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
 		if err != nil {
 			return nil, err
 		}
 		res.hProv = ctx.hProv
+		res.mustReleaseCtx = C.TRUE
+	} else if C.CryptAcquireCertificatePrivateKey(options.SignCert.pCert, 0, nil, &res.hProv, &res.dwKeySpec, &res.mustReleaseCtx) == 0 {
+		return nil, getErr("Error acquiring certificate private key")
 	}
-	if C.CryptCreateHash(res.hProv, res.cAlg(), res.hKey, 0, &res.hHash) == 0 {
+	if C.CryptCreateHash(res.hProv, res.algID, res.hKey, 0, &res.hHash) == 0 {
 		return nil, getErr("Error creating hash")
 	}
 	return res, nil
@@ -68,11 +67,21 @@ func (h *Hash) Close() error {
 	if C.CryptDestroyHash(h.hHash) == 0 {
 		return getErr("Error destroying hash")
 	}
+	if h.mustReleaseCtx != 0 && C.CryptReleaseContext(h.hProv, 0) == 0 {
+		return getErr("Error releasing context")
+	}
+	if h.keyHash != nil {
+		return h.keyHash.Close()
+	}
 	return nil
 }
 
 func (h *Hash) Write(buf []byte) (n int, err error) {
-	if C.CryptHashData(h.hHash, (*C.BYTE)(unsafe.Pointer(&buf[0])), C.DWORD(len(buf)), 0) == 0 {
+	var ptr unsafe.Pointer
+	if len(buf) > 0 {
+		ptr = unsafe.Pointer(&buf[0])
+	}
+	if C.CryptHashData(h.hHash, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) == 0 {
 		return 0, getErr("Error updating hash")
 	}
 	return n, nil
@@ -92,7 +101,6 @@ func (h *Hash) Sum(b []byte) []byte {
 	if C.CryptGetHashParam(h.hHash, C.HP_HASHSIZE, (*C.uchar)(unsafe.Pointer(&n)), &slen, 0) == 0 {
 		panic(getErr("Error getting hash size"))
 	}
-	fmt.Println("***", n)
 	res := make([]byte, int(n))
 	if C.CryptGetHashParam(h.hHash, C.HP_HASHVAL, (*C.BYTE)(&res[0]), &n, 0) == 0 {
 		panic(getErr("Error getting hash value"))
@@ -102,12 +110,17 @@ func (h *Hash) Sum(b []byte) []byte {
 
 // Reset resets the Hash to its initial state.
 func (h *Hash) Reset() {
-	panic("not implemented") // TODO: Implement
+	if C.CryptDestroyHash(h.hHash) == 0 {
+		panic(getErr("Error destroying hash"))
+	}
+	if C.CryptCreateHash(h.hProv, h.algID, h.hKey, 0, &h.hHash) == 0 {
+		panic(getErr("Error creating hash"))
+	}
 }
 
 // Size returns the number of bytes Sum will return.
 func (h *Hash) Size() int {
-	if h.length == 512 {
+	if h.algID == C.CALG_GR3411_2012_512 {
 		return 64
 	}
 	return 32
@@ -118,8 +131,65 @@ func (h *Hash) Size() int {
 // of data, but it may operate more efficiently if all writes
 // are a multiple of the block size.
 func (h *Hash) BlockSize() int {
-	if h.length == 2001 {
+	if h.algID == C.CALG_GR3411 {
 		return 32
 	}
 	return 64
+}
+
+func (h *Hash) Sign() ([]byte, error) {
+	var slen C.DWORD
+	if C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, nil, &slen) == 0 {
+		return nil, getErr("Error calculating signature size")
+	}
+	if slen == 0 {
+		return nil, nil
+	}
+	res := make([]byte, int(slen))
+	if C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, (*C.BYTE)(&res[0]), &slen) == 0 {
+		return nil, getErr("Error calculating signature value")
+	}
+	return res, nil
+}
+
+func (h *Hash) Verify(signer Cert, sig []byte) error {
+	var hPubKey C.HCRYPTKEY
+	// Get the public key from the certificate
+	if C.CryptImportPublicKeyInfo(h.hProv, C.MY_ENC_TYPE, &signer.pCert.pCertInfo.SubjectPublicKeyInfo, &hPubKey) == 0 {
+		return getErr("Error getting certificate public key handle")
+	}
+	var ptr unsafe.Pointer
+	if len(sig) > 0 {
+		ptr = unsafe.Pointer(&sig[0])
+	}
+	if C.CryptVerifySignature(h.hHash, (*C.BYTE)(ptr), C.DWORD(len(sig)), hPubKey, nil, 0) == 0 {
+		return getErr("Error verifying hash signature")
+	}
+	return nil
+}
+
+// NewHMAC creates HMAC object initialized with given byte key
+func NewHMAC(hashAlg asn1.ObjectIdentifier, key []byte) (_ *Hash, rErr error) {
+	opts := HashOptions{HashAlg: hashAlg}
+	keyHash, err := NewHash(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if rErr != nil {
+			keyHash.Close()
+		}
+	}()
+	if _, err := keyHash.Write(key); err != nil {
+		return nil, err
+	}
+	if C.CryptDeriveKey(keyHash.hProv, C.CALG_G28147, keyHash.hHash, C.CRYPT_EXPORTABLE, &opts.HMACKey.hKey) == 0 {
+		return nil, getErr("Error deriving key")
+	}
+	res, err := NewHash(opts)
+	if err != nil {
+		return nil, err
+	}
+	res.keyHash = keyHash
+	return res, nil
 }

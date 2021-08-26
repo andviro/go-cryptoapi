@@ -35,3 +35,65 @@ func TestEncryptData(t *testing.T) {
 		is.Equal(string(res), testData)
 	})
 }
+
+func BenchmarkEncryptData(b *testing.B) {
+	if signCertThumb == "" {
+		b.Skip("certificate for sign test not provided")
+	}
+	b.ReportAllocs()
+	store, err := SystemStore("MY")
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
+	crt, err := store.GetByThumb(signCertThumb)
+	if err != nil {
+		panic(err)
+	}
+	defer crt.Close()
+	testData := "Test string"
+	for i := 0; i < b.N; i++ {
+		data, err := EncryptData([]byte(testData), EncryptOptions{
+			Receivers: []Cert{crt},
+		})
+		if err != nil {
+			panic(err)
+		}
+		if len(data) == 0 {
+			panic("zero data")
+		}
+	}
+}
+
+func BenchmarkDecryptData(b *testing.B) {
+	if signCertThumb == "" {
+		b.Skip("certificate for sign test not provided")
+	}
+	b.ReportAllocs()
+	store, err := SystemStore("MY")
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
+	crt, err := store.GetByThumb(signCertThumb)
+	if err != nil {
+		panic(err)
+	}
+	defer crt.Close()
+	testData := "Test string"
+	data, err := EncryptData([]byte(testData), EncryptOptions{
+		Receivers: []Cert{crt},
+	})
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; i < b.N; i++ {
+		res, err := DecryptData(data, store)
+		if err != nil {
+			panic(err)
+		}
+		if string(res) != testData {
+			panic("data is not decrypted correctly")
+		}
+	}
+}

@@ -37,6 +37,11 @@ type Ctx struct {
 	hProv C.HCRYPTPROV
 }
 
+// IsZero returns true if context was not initialized
+func (c Ctx) IsZero() bool {
+	return c.hProv == 0
+}
+
 // CryptoProvider struct contains description of CSP that can be used for
 // creation of CSP Context.
 type CryptoProvider struct {
