@@ -32,18 +32,27 @@ type HashOptions struct {
 	HMACKey  Key                   // HMAC key for creating hash in HMAC mode
 }
 
-func (ho *HashOptions) cAlg() C.ALG_ID {
+func (ho *HashOptions) cAlg(hmac bool) C.ALG_ID {
 	switch {
 	case GOST_R3411.Equal(ho.HashAlg):
+		if hmac {
+			return C.CALG_GR3411_HMAC
+		}
 		return C.CALG_GR3411
 	case GOST_R3411_12_512.Equal(ho.HashAlg):
+		if hmac {
+			return C.CALG_GR3411_2012_512_HMAC
+		}
 		return C.CALG_GR3411_2012_512
+	}
+	if hmac {
+		return C.CALG_GR3411_2012_256_HMAC
 	}
 	return C.CALG_GR3411_2012_256
 }
 
 func NewHash(options HashOptions) (*Hash, error) {
-	res := &Hash{algID: options.cAlg()}
+	res := &Hash{algID: options.cAlg(!options.HMACKey.IsZero())}
 	if !options.HMACKey.IsZero() {
 		res.hKey = options.HMACKey.hKey
 	}

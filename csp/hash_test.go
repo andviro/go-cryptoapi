@@ -36,8 +36,8 @@ func TestHash_Sum(t *testing.T) {
 func TestHash_HMAC_Sum(t *testing.T) {
 	buf := new(bytes.Buffer)
 	for _, algo := range []asn1.ObjectIdentifier{GOST_R3411, GOST_R3411_12_256, GOST_R3411_12_512} {
-		for _, testKey := range []string{"", "some test key", "some other key"} {
-			for _, testStr := range []string{"", "some test string"} {
+		for _, testKey := range []string{"", "1234", "some other key"} {
+			for _, testStr := range []string{"", "The quick brown fox jumps over the lazy dog"} {
 				func() {
 					h, err := NewHMAC(algo, ([]byte)(testKey))
 					if err != nil {
