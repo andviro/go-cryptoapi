@@ -85,33 +85,43 @@ func (h *Hash) Close() error {
 	return nil
 }
 
-func (h *Hash) Write(buf []byte) (n int, err error) {
+func write(dest C.HCRYPTHASH, buf []byte) (n int, err error) {
 	var ptr unsafe.Pointer
 	if len(buf) > 0 {
 		ptr = unsafe.Pointer(&buf[0])
 	}
-	if C.CryptHashData(h.hHash, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) == 0 {
+	if C.CryptHashData(dest, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) == 0 {
 		return 0, getErr("Error updating hash")
 	}
 	return n, nil
 }
 
+func (h *Hash) Write(buf []byte) (n int, err error) {
+	return write(h.hHash, buf)
+}
+
 // Sum appends the current hash to b and returns the resulting slice.
 // It does not change the underlying hash state.
 func (h *Hash) Sum(b []byte) []byte {
-	if len(b) != 0 {
-		_, err := h.Write(b)
-		if err != nil {
-			panic(err)
+	var hHash C.HCRYPTHASH
+	if C.CryptDuplicateHash(h.hHash, nil, 0, &hHash) == 0 {
+		panic(getErr("Error duplicating hash"))
+	}
+	defer func() {
+		if C.CryptDestroyHash(hHash) == 0 {
+			panic(getErr("Error destroying hash"))
 		}
+	}()
+	if _, err := write(hHash, b); err != nil {
+		panic(err)
 	}
 	var n C.DWORD
 	slen := C.DWORD(C.sizeof_DWORD)
-	if C.CryptGetHashParam(h.hHash, C.HP_HASHSIZE, (*C.uchar)(unsafe.Pointer(&n)), &slen, 0) == 0 {
+	if C.CryptGetHashParam(hHash, C.HP_HASHSIZE, (*C.uchar)(unsafe.Pointer(&n)), &slen, 0) == 0 {
 		panic(getErr("Error getting hash size"))
 	}
 	res := make([]byte, int(n))
-	if C.CryptGetHashParam(h.hHash, C.HP_HASHVAL, (*C.BYTE)(&res[0]), &n, 0) == 0 {
+	if C.CryptGetHashParam(hHash, C.HP_HASHVAL, (*C.BYTE)(&res[0]), &n, 0) == 0 {
 		panic(getErr("Error getting hash value"))
 	}
 	return res
@@ -119,7 +129,7 @@ func (h *Hash) Sum(b []byte) []byte {
 
 // Reset resets the Hash to its initial state.
 func (h *Hash) Reset() {
-	if C.CryptDestroyHash(h.hHash) == 0 {
+	if h.hHash != 0 && C.CryptDestroyHash(h.hHash) == 0 {
 		panic(getErr("Error destroying hash"))
 	}
 	if C.CryptCreateHash(h.hProv, h.algID, h.hKey, 0, &h.hHash) == 0 {
