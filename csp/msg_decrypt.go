@@ -87,7 +87,7 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 	return 0, errors.New("no recipients found")
 }
 
-func (msg *Decryptor) proceed(i int, n int, ctx *Ctx) (int, error) {
+func (msg *Decryptor) proceed(i int, n int, ctx Ctx) (int, error) {
 	var decrPara C.CMSG_CTRL_DECRYPT_PARA
 	decrPara.cbSize = C.sizeof_CMSG_CTRL_DECRYPT_PARA
 	decrPara.hCryptProv = ctx.hProv

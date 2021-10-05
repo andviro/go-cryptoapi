@@ -97,3 +97,33 @@ func BenchmarkDecryptData(b *testing.B) {
 		}
 	}
 }
+
+func TestBlockEncryptData(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for encrypt test not provided")
+	}
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+
+	var data BlockEncryptedData
+	testData := "Test string"
+	t.Run("encrypt data bytes", func(t *testing.T) {
+		data, err = BlockEncrypt(BlockEncryptOptions{Receiver: crt}, []byte(testData))
+		is.NotErr(err)
+		is.NotZero(data.CipherText)
+		t.Logf("%#v", data)
+	})
+	t.Run("decrypt data bytes", func(t *testing.T) {
+		res, err := BlockDecrypt(crt, data)
+		is.NotErr(err)
+		t.Logf("%q", string(res))
+		is.Equal(string(res), testData)
+	})
+}

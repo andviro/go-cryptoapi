@@ -85,10 +85,44 @@ func (key Key) GetParam(param KeyParamID) (res []byte, err error) {
 	return
 }
 
+// SetIV sets key initialization vector
+func (key Key) SetIV(iv []byte) error {
+	if C.CryptSetKeyParam(key.hKey, C.KP_IV, C.LPBYTE(unsafe.Pointer(&iv[0])), 0) == 0 {
+		return getErr("Error setting IV for key")
+	}
+	return nil
+}
+
 // SetMode sets KP_MODE parameter on the key
 func (key Key) SetMode(mode C.DWORD) error {
 	if C.CryptSetKeyParam(key.hKey, C.KP_MODE, C.LPBYTE(unsafe.Pointer(&mode)), 0) == 0 {
 		return getErr("Error setting mode for key")
+	}
+	return nil
+}
+
+// SetAlgID sets KP_ALGID parameter on the key
+func (key Key) SetAlgID(algID C.ALG_ID) error {
+	if C.CryptSetKeyParam(key.hKey, C.KP_MODE, C.LPBYTE(unsafe.Pointer(&algID)), 0) == 0 {
+		return getErr("Error setting algID for key")
+	}
+	return nil
+}
+
+// GetAlgID retrieves key's KP_ALGID parameter
+func (key Key) GetAlgID() (res C.ALG_ID, err error) {
+	slen := C.DWORD(unsafe.Sizeof(res))
+	if C.CryptGetKeyParam(key.hKey, C.KP_ALGID, (*C.BYTE)(unsafe.Pointer(&res)), &slen, 0) == 0 {
+		err = getErr("Error getting key ALG_ID")
+		return
+	}
+	return
+}
+
+// SetPadding sets KP_PADDING parameter on the key
+func (key Key) SetPadding(padding C.DWORD) error {
+	if C.CryptSetKeyParam(key.hKey, C.KP_PADDING, C.LPBYTE(unsafe.Pointer(&padding)), 0) == 0 {
+		return getErr("Error setting padding for key")
 	}
 	return nil
 }
@@ -151,14 +185,34 @@ func (ctx Ctx) ImportKey(buf []byte, cryptKey *Key) (Key, error) {
 // Encrypt byte data on given key
 func (key Key) Encrypt(buf []byte, hash *Hash) ([]byte, error) {
 	slen := C.DWORD(len(buf))
+	buflen := C.DWORD(len(buf))
 	var hHash C.HCRYPTHASH
 	if hash != nil {
 		hHash = hash.hHash
 	}
-	res := make([]byte, len(buf)+32768)
+	if C.CryptEncrypt(key.hKey, hHash, C.TRUE, 0, nil, &buflen, 0) == 0 {
+		return nil, getErr("Error getting encrypting data size")
+	}
+	res := make([]byte, buflen)
 	copy(res, buf)
-	if C.CryptEncrypt(key.hKey, hHash, C.TRUE, 0, (*C.BYTE)(&res[0]), &slen, C.DWORD(len(res))) == 0 {
-		return res, getErr("Error encrypting data")
+
+	if C.CryptEncrypt(key.hKey, hHash, C.TRUE, 0, (*C.BYTE)(&res[0]), &slen, buflen) == 0 {
+		return nil, getErr("Error encrypting data")
+	}
+	return res, nil
+}
+
+// Decrypt byte data on given key
+func (key Key) Decrypt(buf []byte, hash *Hash) ([]byte, error) {
+	slen := C.DWORD(len(buf))
+	var hHash C.HCRYPTHASH
+	if hash != nil {
+		hHash = hash.hHash
+	}
+	res := make([]byte, len(buf))
+	copy(res, buf)
+	if C.CryptDecrypt(key.hKey, hHash, C.TRUE, 0, (*C.BYTE)(&res[0]), &slen) == 0 {
+		return res, getErr("Error decrypting data")
 	}
 	return res[0:slen], nil
 }
