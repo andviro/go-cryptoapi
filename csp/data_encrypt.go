@@ -97,3 +97,111 @@ func DecryptData(data []byte, store *CertStore) ([]byte, error) {
 	}
 	return res, nil
 }
+
+type BlockEncryptedData struct {
+	CipherText   []byte
+	EphemeralKey []byte
+	SessionKey   []byte
+	IV           []byte
+}
+
+func BlockEncrypt(receiver Cert, data []byte) (BlockEncryptedData, error) {
+	var res BlockEncryptedData
+	ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
+	if err != nil {
+		return res, err
+	}
+	pubKey, err := ctx.ImportPublicKeyInfo(receiver)
+	if err != nil {
+		return res, err
+	}
+	defer pubKey.Close()
+	keyData, err := pubKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	ephemKey, err := ctx.GenKey(C.CALG_DH_EL_EPHEM, C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	defer ephemKey.Close()
+	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
+	if err != nil {
+		return res, err
+	}
+	defer agreeKey.Close()
+	sessionKey, err := ctx.GenKey(C.CALG_G28147, C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	res.IV, err = sessionKey.GetParam(C.KP_IV)
+	if err != nil {
+		return res, err
+	}
+	res.SessionKey, err = sessionKey.Encode(&agreeKey)
+	if err != nil {
+		return res, err
+	}
+	res.EphemeralKey, err = ephemKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	if err := sessionKey.SetMode(C.CRYPT_MODE_CBCSTRICT); err != nil {
+		return res, err
+	}
+	res.CipherText, err = sessionKey.Encrypt(data, nil)
+	if err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+func BlockEncrypt(data BlockEncryptedData) ([]byte, error) {
+	ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
+	if err != nil {
+		return res, err
+	}
+	pubKey, err := ctx.ImportPublicKeyInfo(receiver)
+	if err != nil {
+		return res, err
+	}
+	defer pubKey.Close()
+	keyData, err := pubKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	ephemKey, err := ctx.GenKey(C.CALG_DH_EL_EPHEM, C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	defer ephemKey.Close()
+	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
+	if err != nil {
+		return res, err
+	}
+	defer agreeKey.Close()
+	sessionKey, err := ctx.GenKey(C.CALG_G28147, C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	res.IV, err = sessionKey.GetParam(C.KP_IV)
+	if err != nil {
+		return res, err
+	}
+	res.SessionKey, err = sessionKey.Encode(&agreeKey)
+	if err != nil {
+		return res, err
+	}
+	res.EphemeralKey, err = ephemKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	if err := sessionKey.SetMode(C.CRYPT_MODE_CBCSTRICT); err != nil {
+		return res, err
+	}
+	res.CipherText, err = sessionKey.Encrypt(data, nil)
+	if err != nil {
+		return res, err
+	}
+	return res, nil
+}
