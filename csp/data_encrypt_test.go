@@ -115,7 +115,9 @@ func TestBlockEncryptData(t *testing.T) {
 	var data BlockEncryptedData
 	testData := "Test string"
 	t.Run("encrypt data bytes", func(t *testing.T) {
-		data, err = BlockEncrypt(BlockEncryptOptions{Receiver: crt}, []byte(testData))
+		data, err = BlockEncrypt(BlockEncryptOptions{
+			Receiver: crt,
+		}, []byte(testData))
 		is.NotErr(err)
 		is.NotZero(data.CipherText)
 		t.Logf("%#v", data)

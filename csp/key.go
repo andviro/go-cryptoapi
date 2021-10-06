@@ -170,14 +170,16 @@ func (ctx Ctx) ImportKey(buf SimpleBlob, cryptKey *Key) (Key, error) {
 	var (
 		res     Key
 		decrKey C.HCRYPTKEY
+		errMsg  = "Error importing key blob"
 	)
 	bufBytes := C.CBytes(buf)
 	defer C.free(bufBytes)
 	if cryptKey != nil {
 		decrKey = cryptKey.hKey
+		errMsg = "Error importing encrypted key blob"
 	}
 	if C.CryptImportKey(ctx.hProv, (*C.BYTE)(bufBytes), C.DWORD(len(buf)), decrKey, 0, &res.hKey) == 0 {
-		return res, getErr("Error importing key blob")
+		return res, getErr(errMsg)
 	}
 	return res, nil
 }

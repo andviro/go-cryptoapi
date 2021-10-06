@@ -99,42 +99,39 @@ func DecryptData(data []byte, store *CertStore) ([]byte, error) {
 }
 
 type BlockEncryptedData struct {
-	CipherText   []byte
-	EphemeralKey []byte
-	SessionKey   []byte
-	IV           []byte
-	KeyExp       C.DWORD
+	IV               []byte
+	CipherText       []byte
+	SessionKey       SessionKey
+	SessionPublicKey []byte
+	KeyExp           C.DWORD
 }
 
 type BlockEncryptOptions struct {
 	Receiver Cert
 	KeyAlg   C.ALG_ID // If not set, C.CALG_DH_GR3410_12_256_EPHEM is used
-	KeyExp   C.DWORD  // If not set, autodetect key export AlgID based on KeyAlg
+	KeyExp   C.DWORD  // If not set, C.CALG_PRO_EXPORT is used
 }
 
 func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
 	provType := ProvGost2012_512
-	switch opts.KeyAlg {
-	case 0:
+	if opts.KeyExp == 0 {
+		opts.KeyExp = C.CALG_PRO_EXPORT
+	}
+	if opts.KeyAlg == 0 {
 		opts.KeyAlg = C.CALG_DH_GR3410_12_256_EPHEM
-		fallthrough
-	case C.CALG_DH_GR3410_12_256_EPHEM, C.CALG_DH_GR3410_12_512_EPHEM:
-		if opts.KeyExp == 0 {
-			opts.KeyExp = C.CALG_PRO12_EXPORT
-		}
-	case C.CALG_DH_EL_EPHEM:
-		if opts.KeyExp == 0 {
-			opts.KeyExp = C.CALG_PRO_EXPORT
-		}
-		provType = ProvGost2001
 	}
 	res := BlockEncryptedData{
 		KeyExp: opts.KeyExp,
 	}
-	ctx, err := AcquireCtx("", "", provType, CryptVerifyContext)
+	var (
+		ctx Ctx
+		err error
+	)
+	ctx, err = AcquireCtx("", "", provType, CryptVerifyContext)
 	if err != nil {
 		return res, err
 	}
+	defer ctx.Close()
 	pubKey, err := ctx.ImportPublicKeyInfo(opts.Receiver)
 	if err != nil {
 		return res, err
@@ -149,6 +146,10 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 		return res, err
 	}
 	defer ephemKey.Close()
+	res.SessionPublicKey, err = ephemKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
 	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
 	if err != nil {
 		return res, err
@@ -161,12 +162,12 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	if err != nil {
 		return res, err
 	}
-	res.SessionKey, err = sessionKey.Encode(&agreeKey)
+	defer sessionKey.Close()
+	sessKey, err := sessionKey.Encode(&agreeKey)
 	if err != nil {
 		return res, err
 	}
-	res.EphemeralKey, err = ephemKey.Encode(nil)
-	if err != nil {
+	if res.SessionKey, err = sessKey.ToSessionKey(); err != nil {
 		return res, err
 	}
 	if err := sessionKey.SetMode(C.CRYPT_MODE_CBC); err != nil {
@@ -191,21 +192,16 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer ctx.Close()
 	userKey, err := ctx.Key(C.AT_KEYEXCHANGE)
 	if err != nil {
 		return nil, err
 	}
-	algID, err := userKey.GetAlgID()
-	if err != nil {
-		return nil, err
-	}
+	defer userKey.Close()
 	if data.KeyExp == 0 {
-		data.KeyExp = C.CALG_PRO12_EXPORT
-		if algID == C.CALG_DH_EL_SF {
-			data.KeyExp = C.CALG_PRO_EXPORT
-		}
+		data.KeyExp = C.CALG_PRO_EXPORT
 	}
-	agreeKey, err := ctx.ImportKey(data.EphemeralKey, &userKey)
+	agreeKey, err := ctx.ImportKey(data.SessionPublicKey, &userKey)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +209,8 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if err := agreeKey.SetAlgID(data.KeyExp); err != nil {
 		return nil, err
 	}
-	sessionKey, err := ctx.ImportKey(data.SessionKey, &agreeKey)
+	sb := data.SessionKey.ToSimpleBlob()
+	sessionKey, err := ctx.ImportKey(sb, &agreeKey)
 	if err != nil {
 		return nil, err
 	}
