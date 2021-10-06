@@ -147,7 +147,7 @@ func (ctx Ctx) ImportPublicKeyInfo(cert Cert) (Key, error) {
 
 // Encode exports a cryptographic key or a key pair in a secure manner. If
 // cryptKey is nil, exports public key in unencrypted for, else -- session key.
-func (key Key) Encode(cryptKey *Key) ([]byte, error) {
+func (key Key) Encode(cryptKey *Key) (SimpleBlob, error) {
 	var expKey C.HCRYPTKEY
 	var blobType C.DWORD = C.PUBLICKEYBLOB
 	if cryptKey != nil {
@@ -162,11 +162,11 @@ func (key Key) Encode(cryptKey *Key) ([]byte, error) {
 	if C.CryptExportKey(key.hKey, expKey, blobType, 0, (*C.BYTE)(unsafe.Pointer(&buf[0])), &slen) == 0 {
 		return nil, getErr("Error exporting key blob")
 	}
-	return buf[0:int(slen)], nil
+	return SimpleBlob(buf[0:int(slen)]), nil
 }
 
 // ImportKey transfers a cryptographic key from a key BLOB into a context.
-func (ctx Ctx) ImportKey(buf []byte, cryptKey *Key) (Key, error) {
+func (ctx Ctx) ImportKey(buf SimpleBlob, cryptKey *Key) (Key, error) {
 	var (
 		res     Key
 		decrKey C.HCRYPTKEY
