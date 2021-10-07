@@ -112,6 +112,8 @@ type BlockEncryptOptions struct {
 	KeyExp   C.DWORD  // If not set, C.CALG_PRO_EXPORT is used
 }
 
+const publicKeyLength = 64
+
 func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
 	provType := ProvGost2012_512
 	if opts.KeyExp == 0 {
@@ -150,6 +152,7 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	if err != nil {
 		return res, err
 	}
+	res.SessionPublicKey = res.SessionPublicKey[len(res.SessionPublicKey)-publicKeyLength:]
 	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
 	if err != nil {
 		return res, err
@@ -201,7 +204,13 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if data.KeyExp == 0 {
 		data.KeyExp = C.CALG_PRO_EXPORT
 	}
-	agreeKey, err := ctx.ImportKey(data.SessionPublicKey, &userKey)
+	graftedPublicKey, err := userKey.Encode(nil)
+	if err != nil {
+		return nil, err
+	}
+	// HAHAHAHACKY
+	copy(graftedPublicKey[len(graftedPublicKey)-publicKeyLength:], data.SessionPublicKey)
+	agreeKey, err := ctx.ImportKey(graftedPublicKey, &userKey)
 	if err != nil {
 		return nil, err
 	}
