@@ -33,6 +33,7 @@ func TestMsgDecode_Verify(t *testing.T) {
 		is.NotErr(err)
 		is.NotZero(store)
 		certs := store.Certs()
+		is.NotZero(len(certs))
 		for _, c := range certs {
 			is.NotZero(len(c.Bytes()))
 			is.Lax().NotErr(msg.Verify(c))

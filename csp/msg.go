@@ -51,13 +51,24 @@ type Msg struct {
 	hMsg       C.HCRYPTMSG
 	signerKeys []C.HCRYPTPROV_OR_NCRYPT_KEY_HANDLE
 	w          io.Writer
+	finalized  bool
 	callbackID int64
 	lastError  error
+}
+
+func (msg *Msg) flush() error {
+	if msg.w != nil && !msg.finalized && !msg.update([]byte{0}, 0, true) {
+		return getErr("Error flushing message")
+	}
+	return nil
 }
 
 // CertStore returns message certificate store. As a side-effect, source stream
 // is fully read and parsed.
 func (msg *Msg) CertStore() (res CertStore, err error) {
+	if err = msg.flush(); err != nil {
+		return
+	}
 	if res.hStore = C.openStoreMsg(msg.hMsg); res.hStore == nil {
 		err = getErr("Error opening message cert store")
 		return
