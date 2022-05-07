@@ -21,6 +21,13 @@ import (
 // ErrorCode corresponds to a C type DWORD
 type ErrorCode C.DWORD
 
+func (ec ErrorCode) String() string {
+	if s, ok := errorStringMap[int64(ec)]; ok {
+		return s
+	}
+	return fmt.Sprintf("%#x", ec)
+}
+
 // Some C error codes translated to Go constants
 const (
 	ErrBadKeysetParam ErrorCode = C.NTE_BAD_KEYSET_PARAM & (1<<32 - 1) // Typically occurs when trying to acquire context
@@ -43,7 +50,7 @@ type Error struct {
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("%s: %X", e.msg, e.Code)
+	return fmt.Sprintf("%s: %s", e.msg, e.Code)
 }
 
 func charPtr(s string) *C.CHAR {
