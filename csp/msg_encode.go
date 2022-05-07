@@ -132,8 +132,8 @@ func (msg *Msg) cleanup() error {
 // Close needs to be called to release internal message handle and flush
 // underlying encoded message.
 func (msg *Msg) Close() error {
-	if msg.w != nil && !msg.update([]byte{0}, 0, true) {
-		return getErr("Error finalizing message")
+	if err := msg.flush(); err != nil {
+		return err
 	}
 	return msg.cleanup()
 }

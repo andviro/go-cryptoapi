@@ -97,3 +97,141 @@ func DecryptData(data []byte, store *CertStore) ([]byte, error) {
 	}
 	return res, nil
 }
+
+type BlockEncryptedData struct {
+	IV               []byte
+	CipherText       []byte
+	SessionKey       SessionKey
+	SessionPublicKey []byte
+	KeyExp           C.DWORD
+}
+
+type BlockEncryptOptions struct {
+	Receiver Cert
+	KeyAlg   C.ALG_ID // If not set, C.CALG_DH_GR3410_12_256_EPHEM is used
+	KeyExp   C.DWORD  // If not set, C.CALG_PRO_EXPORT is used
+}
+
+const publicKeyLength = 64
+
+func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
+	provType := ProvGost2012_512
+	if opts.KeyExp == 0 {
+		opts.KeyExp = C.CALG_PRO_EXPORT
+	}
+	if opts.KeyAlg == 0 {
+		opts.KeyAlg = C.CALG_DH_GR3410_12_256_EPHEM
+	}
+	res := BlockEncryptedData{
+		KeyExp: opts.KeyExp,
+	}
+	var (
+		ctx Ctx
+		err error
+	)
+	ctx, err = AcquireCtx("", "", provType, CryptVerifyContext)
+	if err != nil {
+		return res, err
+	}
+	defer ctx.Close()
+	pubKey, err := ctx.ImportPublicKeyInfo(opts.Receiver)
+	if err != nil {
+		return res, err
+	}
+	defer pubKey.Close()
+	keyData, err := pubKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	ephemKey, err := ctx.GenKey(KeyPairID(opts.KeyAlg), C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	defer ephemKey.Close()
+	res.SessionPublicKey, err = ephemKey.Encode(nil)
+	if err != nil {
+		return res, err
+	}
+	res.SessionPublicKey = res.SessionPublicKey[len(res.SessionPublicKey)-publicKeyLength:]
+	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
+	if err != nil {
+		return res, err
+	}
+	defer agreeKey.Close()
+	if err := agreeKey.SetAlgID(opts.KeyExp); err != nil {
+		return res, err
+	}
+	sessionKey, err := ctx.GenKey(C.CALG_G28147, C.CRYPT_EXPORTABLE)
+	if err != nil {
+		return res, err
+	}
+	defer sessionKey.Close()
+	sessKey, err := sessionKey.Encode(&agreeKey)
+	if err != nil {
+		return res, err
+	}
+	if res.SessionKey, err = sessKey.ToSessionKey(); err != nil {
+		return res, err
+	}
+	if err := sessionKey.SetMode(C.CRYPT_MODE_CBC); err != nil {
+		return res, err
+	}
+	if err := sessionKey.SetPadding(C.ISO10126_PADDING); err != nil {
+		return res, err
+	}
+	res.IV, err = sessionKey.GetParam(C.KP_IV)
+	if err != nil {
+		return res, err
+	}
+	res.CipherText, err = sessionKey.Encrypt(data, nil)
+	if err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
+	ctx, err := recipient.Context()
+	if err != nil {
+		return nil, err
+	}
+	defer ctx.Close()
+	userKey, err := ctx.Key(C.AT_KEYEXCHANGE)
+	if err != nil {
+		return nil, err
+	}
+	defer userKey.Close()
+	if data.KeyExp == 0 {
+		data.KeyExp = C.CALG_PRO_EXPORT
+	}
+	graftedPublicKey, err := userKey.Encode(nil)
+	if err != nil {
+		return nil, err
+	}
+	// HAHAHAHACKY
+	copy(graftedPublicKey[len(graftedPublicKey)-publicKeyLength:], data.SessionPublicKey)
+	agreeKey, err := ctx.ImportKey(graftedPublicKey, &userKey)
+	if err != nil {
+		return nil, err
+	}
+	defer agreeKey.Close()
+	if err := agreeKey.SetAlgID(data.KeyExp); err != nil {
+		return nil, err
+	}
+	sb := data.SessionKey.ToSimpleBlob()
+	sessionKey, err := ctx.ImportKey(sb, &agreeKey)
+	if err != nil {
+		return nil, err
+	}
+	defer sessionKey.Close()
+	if err := sessionKey.SetIV(data.IV); err != nil {
+		return nil, err
+	}
+	if err := sessionKey.SetMode(C.CRYPT_MODE_CBC); err != nil {
+		return nil, err
+	}
+	if err := sessionKey.SetPadding(C.ISO10126_PADDING); err != nil {
+		return nil, err
+	}
+	return sessionKey.Decrypt(data.CipherText, nil)
+}
