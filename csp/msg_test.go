@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-multierror"
 	"gopkg.in/tylerb/is.v1"
 )
 
@@ -120,9 +121,9 @@ func TestMsgEncode_Detached(t *testing.T) {
 	is.NotErr(err)
 	defer crt.Close()
 
-	data, err := ioutil.ReadFile("testdata/file.bin")
-	is.NotErr(err)
-	//     data := []byte(strings.Repeat("test data", 1))
+	//     data, err := ioutil.ReadFile("testdata/file.bin")
+	//     is.NotErr(err)
+	data := []byte(strings.Repeat("test data", 1))
 	ioutil.WriteFile("testdata/dest.bin", data, 0666)
 	dest := new(bytes.Buffer)
 	t.Run("sign", func(t *testing.T) {
@@ -140,7 +141,7 @@ func TestMsgEncode_Detached(t *testing.T) {
 	t.Run("verify", func(t *testing.T) {
 		msg, err := OpenToVerify(dest.Bytes())
 		is.NotErr(err)
-		_, err = dest.WriteTo(msg)
+		_, err = bytes.NewReader(data).WriteTo(msg)
 		is.NotErr(err)
 		store, err := msg.CertStore()
 		is.NotErr(err)
@@ -222,5 +223,68 @@ func BenchmarkMsgEncode(b *testing.B) {
 			panic(err)
 		}
 		dest.Reset()
+	}
+}
+
+func TestSignVerify(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for encrypt test not provided")
+	}
+	store, err := SystemStore("MY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	crt, err := store.GetByThumb(signCertThumb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer crt.Close()
+	dest := new(bytes.Buffer)
+	data := strings.Repeat("test string", 1)
+	src := strings.NewReader(data)
+	err = func() (rErr error) {
+		msg, err := OpenToEncode(dest, EncodeOptions{
+			Signers:  []Cert{crt},
+			Detached: true,
+		})
+		if err != nil {
+			return fmt.Errorf("открытие сообщения на кодирование: %+v", err)
+		}
+		defer func() {
+			if err := msg.Close(); err != nil {
+				rErr = multierror.Append(rErr, fmt.Errorf("закрытие сообщения: %+v", err))
+			}
+		}()
+		if _, err := io.Copy(msg, src); err != nil {
+			return fmt.Errorf("кодирование сообщения: %+v", err)
+		}
+		return nil
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ioutil.WriteFile("testdata/detached.p7s", dest.Bytes(), 0666)
+	ioutil.WriteFile("testdata/detached.txt", []byte(data), 0666)
+	msg, err := OpenToVerify(dest.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := strings.NewReader(data).WriteTo(msg); err != nil {
+		t.Fatal(err)
+	}
+	msgStore, err := msg.CertStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certs := msgStore.Certs()
+	for _, c := range certs {
+		t.Logf("%+v", c)
+		if err := msg.Verify(c); err != nil {
+			t.Errorf("%+v", err)
+		}
+	}
+	if err := msg.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
