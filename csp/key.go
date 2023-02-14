@@ -14,7 +14,7 @@ type KeyFlag C.DWORD
 const (
 	KeyArchivable KeyFlag = C.CRYPT_ARCHIVABLE
 	KeyExportable KeyFlag = C.CRYPT_EXPORTABLE
-	//KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
+	// KeyForceProtectionHigh KeyFlag = C.CRYPT_FORCE_KEY_PROTECTION_HIGH
 )
 
 // KeyPairID selects public/private key pair from CSP container
@@ -103,7 +103,7 @@ func (key Key) SetMode(mode C.DWORD) error {
 
 // SetAlgID sets KP_ALGID parameter on the key
 func (key Key) SetAlgID(algID C.ALG_ID) error {
-	if C.CryptSetKeyParam(key.hKey, C.KP_MODE, C.LPBYTE(unsafe.Pointer(&algID)), 0) == 0 {
+	if C.CryptSetKeyParam(key.hKey, C.KP_ALGID, C.LPBYTE(unsafe.Pointer(&algID)), 0) == 0 {
 		return getErr("Error setting algID for key")
 	}
 	return nil
@@ -197,7 +197,6 @@ func (key Key) Encrypt(buf []byte, hash *Hash) ([]byte, error) {
 	}
 	res := make([]byte, buflen)
 	copy(res, buf)
-
 	if C.CryptEncrypt(key.hKey, hHash, C.TRUE, 0, (*C.BYTE)(&res[0]), &slen, buflen) == 0 {
 		return nil, getErr("Error encrypting data")
 	}
