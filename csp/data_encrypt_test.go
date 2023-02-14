@@ -1,6 +1,10 @@
 package csp
 
 import (
+	"bytes"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
 	"testing"
 
 	"gopkg.in/tylerb/is.v1"
@@ -128,4 +132,85 @@ func TestBlockEncryptData(t *testing.T) {
 		t.Logf("%q", string(res))
 		is.Equal(string(res), testData)
 	})
+}
+
+func autoDecode(src []byte) ([]byte, error) {
+	if !bytes.HasPrefix(src, []byte("-----")) {
+		return src, nil
+	}
+	block, _ := pem.Decode(src)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("неверный формат PEM")
+	}
+	return block.Bytes, nil
+}
+
+func TestBlockEncryptForCert(t *testing.T) {
+	certData, err := ioutil.ReadFile("testdata/dest.crt")
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	certBytes, err := autoDecode(certData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crt, err := ParseCert(certBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data BlockEncryptedData
+	testData := "Test string"
+	t.Run("encrypt data bytes", func(t *testing.T) {
+		data, err = BlockEncrypt(BlockEncryptOptions{
+			Receiver: crt,
+		}, []byte(testData))
+		if err != nil {
+			t.Error(err.Error())
+		}
+		t.Logf("%#v", data)
+	})
+}
+
+func TestBlockDecryptDataFile(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for encrypt test not provided")
+	}
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+
+	data := BlockEncryptedData{}
+	pkBlob, err := ioutil.ReadFile("testdata/session_PublicKey.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.SessionPublicKey = pkBlob[len(pkBlob)-64:]
+	if data.IV, err = ioutil.ReadFile("testdata/vector.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if data.CipherText, err = ioutil.ReadFile("testdata/encrypt.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if data.SessionKey.EncryptedKey, err = ioutil.ReadFile("testdata/session_EncryptedKey.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if data.SessionKey.SeanceVector, err = ioutil.ReadFile("testdata/session_SV.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if data.SessionKey.MACKey, err = ioutil.ReadFile("testdata/session_MacKey.bin"); err != nil {
+		t.Fatal(err)
+	}
+	if data.SessionKey.EncryptionParamSet, err = ioutil.ReadFile("testdata/EncryptionParam.bin"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = BlockDecrypt(crt, data)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
