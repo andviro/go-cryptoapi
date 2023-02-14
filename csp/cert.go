@@ -103,12 +103,12 @@ func (c Cert) Context() (Ctx, error) {
 	var provInfo *C.CRYPT_KEY_PROV_INFO
 	var res Ctx
 	var cbData C.DWORD
-	if 0 == C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, nil, &cbData) {
+	if C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, nil, &cbData) == 0 {
 		return res, getErr("Error getting certificate context property length")
 	}
 	provInfo = (*C.CRYPT_KEY_PROV_INFO)(C.malloc(C.size_t(cbData)))
 	defer C.free(unsafe.Pointer(provInfo))
-	if 0 == C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) {
+	if C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) == 0 {
 		return res, getErr("Error getting certificate context property")
 	}
 	if C.CryptAcquireContextW(&res.hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) == 0 {
