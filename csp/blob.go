@@ -19,7 +19,8 @@ type SessionKey struct {
 
 type GOST2001KeyTransport [172]byte
 
-var gost2001KeyTransport = GOST2001KeyTransport{0x30, 0x81, 0xA9, 0x30, 0x28, 4, 0x20,
+var gost2001KeyTransport = GOST2001KeyTransport{
+	0x30, 0x81, 0xA9, 0x30, 0x28, 4, 0x20,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // offs 7: len 32 = Session Encrypted Key
 	4, 4,
 	0, 0, 0, 0, // offs 41 len 4 = Session Mac Key
@@ -87,7 +88,7 @@ func (s BlockEncryptedData) ToGOST2001KeyTransport() []byte {
 func (s GOST2001KeyTransport) ToBlockEncryptedData(dataStream []byte) BlockEncryptedData {
 	res := BlockEncryptedData{
 		IV:         dataStream[0:8],
-		CipherText: dataStream[8:len(dataStream)],
+		CipherText: dataStream[8:],
 		SessionKey: SessionKey{
 			EncryptedKey: s[7 : 7+32],
 			MACKey:       s[41 : 41+4],
