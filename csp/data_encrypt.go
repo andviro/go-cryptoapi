@@ -44,6 +44,7 @@ static CRYPT_DECRYPT_MESSAGE_PARA *mkDecryptMessagePara(HCERTSTORE *store) {
 }
 */
 import "C"
+
 import (
 	"fmt"
 	"unsafe"
@@ -145,47 +146,47 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	}
 	ephemKey, err := ctx.GenKey(KeyPairID(opts.KeyAlg), C.CRYPT_EXPORTABLE)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("generating ephemeral key: %w", err)
 	}
 	defer ephemKey.Close()
 	res.SessionPublicKey, err = ephemKey.Encode(nil)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("encoding ephemeral key: %w", err)
 	}
 	res.SessionPublicKey = res.SessionPublicKey[len(res.SessionPublicKey)-publicKeyLength:]
 	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("importing session public key: %w", err)
 	}
 	defer agreeKey.Close()
 	if err := agreeKey.SetAlgID(opts.KeyExp); err != nil {
-		return res, err
+		return res, fmt.Errorf("setting algorithm ID to agree key: %w", err)
 	}
 	sessionKey, err := ctx.GenKey(C.CALG_G28147, C.CRYPT_EXPORTABLE)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("generating session key: %w", err)
 	}
 	defer sessionKey.Close()
 	sessKey, err := sessionKey.Encode(&agreeKey)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("encoding session key: %w", err)
 	}
 	if res.SessionKey, err = sessKey.ToSessionKey(); err != nil {
-		return res, err
+		return res, fmt.Errorf("exporting session key: %w", err)
 	}
 	if err := sessionKey.SetMode(C.CRYPT_MODE_CBC); err != nil {
-		return res, err
+		return res, fmt.Errorf("setting session key mode CBC: %w", err)
 	}
 	if err := sessionKey.SetPadding(C.ISO10126_PADDING); err != nil {
-		return res, err
+		return res, fmt.Errorf("setting session key padding: %w", err)
 	}
 	res.IV, err = sessionKey.GetParam(C.KP_IV)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("getting session key IV: %w", err)
 	}
 	res.CipherText, err = sessionKey.Encrypt(data, nil)
 	if err != nil {
-		return res, err
+		return res, fmt.Errorf("encrypting ciphertext: %w", err)
 	}
 	return res, nil
 }
@@ -212,26 +213,26 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	copy(graftedPublicKey[len(graftedPublicKey)-publicKeyLength:], data.SessionPublicKey)
 	agreeKey, err := ctx.ImportKey(graftedPublicKey, &userKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("importing agree key: %+v", err)
 	}
 	defer agreeKey.Close()
-	if err := agreeKey.SetAlgID(data.KeyExp); err != nil {
-		return nil, err
+	if err = agreeKey.SetAlgID(data.KeyExp); err != nil {
+		return nil, fmt.Errorf("setting algorithm ID to agree key: %+v", err)
 	}
 	sb := data.SessionKey.ToSimpleBlob()
 	sessionKey, err := ctx.ImportKey(sb, &agreeKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("importing session key: %+v", err)
 	}
 	defer sessionKey.Close()
 	if err := sessionKey.SetIV(data.IV); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("setting session key IV: %+v", err)
 	}
 	if err := sessionKey.SetMode(C.CRYPT_MODE_CBC); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("setting session key CBC mode: %+v", err)
 	}
 	if err := sessionKey.SetPadding(C.ISO10126_PADDING); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("setting session key padding: %+v", err)
 	}
 	return sessionKey.Decrypt(data.CipherText, nil)
 }
