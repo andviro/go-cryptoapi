@@ -27,14 +27,15 @@ func (ec ErrorCode) String() string {
 	if s, ok := errorStringMap[int64(ec)]; ok {
 		return s
 	}
-	return fmt.Sprintf("%#x", ec)
+	actualCode := C.DWORD(ec)
+	return fmt.Sprintf("%#010x", actualCode)
 }
 
 // Some C error codes translated to Go constants
 const (
 	ErrBadKeysetParam ErrorCode = C.NTE_BAD_KEYSET_PARAM & (1<<32 - 1) // Typically occurs when trying to acquire context
 	ErrFail           ErrorCode = C.NTE_FAIL & (1<<32 - 1)             // Misc error
-	//ErrInvalidParameter ErrorCode = C.NTE_INVALID_PARAMETER & (1<<32 - 1) // Bad parameter to cryptographic function
+	// ErrInvalidParameter ErrorCode = C.NTE_INVALID_PARAMETER & (1<<32 - 1) // Bad parameter to cryptographic function
 	ErrNoKey          ErrorCode = C.NTE_NO_KEY & (1<<32 - 1)                   // Key not found
 	ErrExists         ErrorCode = C.NTE_EXISTS & (1<<32 - 1)                   // Object already exists
 	ErrNotFound       ErrorCode = C.NTE_NOT_FOUND & (1<<32 - 1)                // Object not found
