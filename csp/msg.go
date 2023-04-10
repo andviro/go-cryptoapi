@@ -83,3 +83,35 @@ func (msg *Msg) Verify(c Cert) error {
 	}
 	return nil
 }
+
+// GetSignerCount returns number of signer infos in message
+func (msg *Msg) GetSignerCount() (int, error) {
+	var res C.DWORD
+	var cbData C.DWORD = 4
+	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_COUNT_PARAM, 0, unsafe.Pointer(&res), &cbData) {
+		return 0, getErr("Error acquiring message signer count")
+	}
+	return int(res), nil
+}
+
+// GetSignerCert returns i-th message signer certificate from provided
+// certificate store (usually acquired by msg.CertStore() method).
+func (msg *Msg) GetSignerCert(i int, store CertStore) (Cert, error) {
+	var cbData C.DWORD
+	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), nil, &cbData) {
+		return Cert{}, getErrf("Error acquiring message %d-th signer info length", i)
+	}
+	signerInfo := C.malloc(C.size_t(cbData))
+	defer C.free(signerInfo)
+	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), signerInfo, &cbData) {
+		return Cert{}, getErrf("Error acquiring message %d-th signer info", i)
+	}
+
+	if pCert := C.CertGetSubjectCertificateFromStore(store.hStore, C.MY_ENC_TYPE, C.PCERT_INFO(signerInfo)); pCert != nil {
+		return Cert{pCert: pCert}, nil
+	}
+	if ErrorCode(C.GetLastError()) != ErrCryptNotFound {
+		return Cert{}, getErr("Error getting certificate from store")
+	}
+	return Cert{}, nil
+}
