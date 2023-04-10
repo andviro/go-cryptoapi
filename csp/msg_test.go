@@ -43,29 +43,56 @@ func TestMsgDecode_Verify(t *testing.T) {
 	is.NotErr(msg.Close())
 }
 
+type detachedTestCase struct {
+	data      string
+	signature string
+}
+
 func TestMsgVerify_Detached(t *testing.T) {
 	is := is.New(t)
+	for j, tc := range []detachedTestCase{
+		{"testdata/4b5412b121ba477d9ea13ee98207ba1d.xml", "testdata/4b5412b121ba477d9ea13ee98207ba1d.xml.sig"},
+	} {
+		sig, err := ioutil.ReadFile(tc.signature)
+		is.NotErr(err)
+		data, err := os.Open(tc.data)
+		is.NotErr(err)
+		msg, err := OpenToVerify(sig)
+		is.NotErr(err)
+		_, err = io.Copy(msg, data)
+		is.NotErr(err)
 
-	sig, err := ioutil.ReadFile("testdata/tinkoff.p7s")
-	is.NotErr(err)
-	data, err := os.Open("testdata/tinkoff.bin")
-	is.NotErr(err)
-	msg, err := OpenToVerify(sig)
-	is.NotErr(err)
-	_, err = io.Copy(msg, data)
-	is.NotErr(err)
-
-	store, err := msg.CertStore()
-	is.NotErr(err)
-	is.NotZero(store)
-
-	certs := store.Certs()
-	for i, c := range certs {
-		t.Run(fmt.Sprintf("verify %d", i), func(t *testing.T) {
-			is.Lax().NotErr(msg.Verify(c))
-		})
+		store, err := msg.CertStore()
+		is.NotErr(err)
+		is.NotZero(store)
+		numSigners, err := msg.GetSignerCount()
+		if err != nil {
+			t.Errorf("%+v", err)
+			return
+		}
+		t.Logf("signer count for %s: %d", tc.signature, numSigners)
+		for i := 0; i < numSigners; i++ {
+			c, err := msg.GetSignerCert(i, store)
+			if err != nil {
+				t.Errorf("%+v", err)
+				continue
+			}
+			ss, err := c.Info().SubjectStr()
+			if err != nil {
+				t.Errorf("%+v", err)
+				continue
+			}
+			t.Logf("verifying: %s", ss)
+			t.Run(fmt.Sprintf("verify %d of %d", i, j), func(t *testing.T) {
+				if err := msg.Verify(c); err != nil {
+					t.Errorf("verifying: %+v", err)
+					return
+				}
+				t.Logf("verified ok")
+			})
+		}
+		is.NotErr(msg.Close())
 	}
-	is.NotErr(msg.Close())
 }
 
 func TestMsgEncode(t *testing.T) {
