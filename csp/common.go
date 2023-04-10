@@ -73,6 +73,10 @@ func getErr(msg string) error {
 	return Error{msg: msg, Code: ErrorCode(C.GetLastError())}
 }
 
+func getErrf(tpl string, values ...interface{}) error {
+	return Error{msg: fmt.Sprintf(tpl, values...), Code: ErrorCode(C.GetLastError())}
+}
+
 func extractBlob(pb *C.DATA_BLOB) []byte {
 	return C.GoBytes(unsafe.Pointer(pb.pbData), C.int(pb.cbData))
 }
