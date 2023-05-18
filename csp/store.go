@@ -26,6 +26,8 @@ import "C"
 
 import (
 	"encoding/hex"
+	"math/big"
+
 	//"io"
 	//"io/ioutil"
 	//"fmt"
@@ -135,6 +137,29 @@ func (s CertStore) FindBySubjectId(thumb string) []Cert {
 	defer C.free(bThumbPtr)
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
 	return s.findCerts(C.CERT_FIND_KEY_IDENTIFIER, unsafe.Pointer(&hashBlob))
+}
+
+// GetByID returns certificate with specified issuer and serial number
+func (s CertStore) GetByID(issuerName []byte, serialNumber *big.Int) (res Cert, err error) {
+	var certID C.CERT_ID
+	certID.dwIdChoice = C.CERT_ID_ISSUER_SERIAL_NUMBER
+	sn := (*C.CERT_ISSUER_SERIAL_NUMBER)(unsafe.Pointer(&certID.f_name[0]))
+	issuerNameC := C.CBytes(issuerName)
+	sn.Issuer.pbData = (*C.BYTE)(issuerNameC)
+	defer C.free(issuerNameC)
+	sn.Issuer.cbData = (C.DWORD)(len(issuerName))
+	snBytes := serialNumber.Bytes()
+	for i, j := 0, len(snBytes)-1; i < j; i, j = i+1, j-1 {
+		snBytes[i], snBytes[j] = snBytes[j], snBytes[i]
+	}
+	snBytesC := C.CBytes(snBytes)
+	sn.SerialNumber.pbData = (*C.BYTE)(snBytesC)
+	defer C.free(snBytesC)
+	sn.SerialNumber.cbData = C.DWORD(len(snBytes))
+	if res.pCert = s.getCert(C.CERT_FIND_CERT_ID, unsafe.Pointer(&certID)); res.pCert == nil {
+		return res, getErr("Error looking up certificate by ID")
+	}
+	return res, nil
 }
 
 // GetByThumb returns first certificate in store that match given thumbprint
