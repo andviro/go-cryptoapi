@@ -85,6 +85,28 @@ func (key Key) GetParam(param KeyParamID) (res []byte, err error) {
 	return
 }
 
+// SetCipherOID sets key's cipher OID
+func (key Key) SetCipherOID(oid []byte) error {
+	if C.CryptSetKeyParam(key.hKey, C.KP_CIPHEROID, (*C.BYTE)(unsafe.Pointer(&oid[0])), 0) == 0 {
+		return getErr("Error setting cipher OID for key")
+	}
+	return nil
+}
+
+// GetCipherOID retrieves key's cipher OID
+func (key Key) GetCipherOID() ([]byte, error) {
+	return key.GetParam(C.KP_CIPHEROID)
+}
+
+// GetDHOID retrieves key's DH OID
+func (key Key) GetDHOID() (string, error) {
+	pbytes, err := key.GetParam(C.KP_DHOID)
+	if err != nil {
+		return "", err
+	}
+	return string(pbytes[:len(pbytes)-1]), nil
+}
+
 // SetIV sets key initialization vector
 func (key Key) SetIV(iv []byte) error {
 	if C.CryptSetKeyParam(key.hKey, C.KP_IV, C.LPBYTE(unsafe.Pointer(&iv[0])), 0) == 0 {

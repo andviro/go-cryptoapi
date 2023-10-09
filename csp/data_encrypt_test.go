@@ -5,6 +5,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"testing"
 
 	"gopkg.in/tylerb/is.v1"
@@ -212,5 +213,31 @@ func TestBlockDecryptDataFile(t *testing.T) {
 	_, err = BlockDecrypt(crt, data)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDecryptData_NewAlg(t *testing.T) {
+	store, err := SystemStore("MY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, tc := range []string{
+		"testdata/0e5d3163fecf404ea0c67d09c5e3ab9e.bin",
+		"testdata/4028f91308c24f26914217b84cfdc6fe.bin",
+		"testdata/c91f4f27c4764d3b821f475297ec16d1.bin",
+		"testdata/1cd658e184a74f1c899144a4a69fdb21.bin",
+	} {
+		t.Run(filepath.Base(tc), func(t *testing.T) {
+			data, err := ioutil.ReadFile(tc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := DecryptData(data, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ioutil.WriteFile(tc+".decr", res, 0664)
+		})
 	}
 }

@@ -82,6 +82,11 @@ func (s BlockEncryptedData) ToGOST2001KeyTransport() []byte {
 	copy(res[41:41+4], s.SessionKey.MACKey)
 	copy(res[98:98+64], s.SessionPublicKey)
 	copy(res[164:164+8], s.SessionKey.SeanceVector)
+	if s.DHParamsOID == "1.2.643.2.2.35.1" {
+		// TODO set proper OID value based on DHParamsOID
+		res[81] = 35
+		res[82] = 1
+	}
 	return res[:]
 }
 
@@ -95,6 +100,10 @@ func (s GOST2001KeyTransport) ToBlockEncryptedData(dataStream []byte) BlockEncry
 			SeanceVector: s[164 : 164+8],
 		},
 		SessionPublicKey: s[98 : 98+64],
+		DHParamsOID:      "1.2.643.2.2.36.0",
+	}
+	if s[81] == 35 {
+		res.DHParamsOID = "1.2.643.2.2.35.1"
 	}
 	return res
 }

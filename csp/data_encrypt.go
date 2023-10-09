@@ -105,6 +105,7 @@ type BlockEncryptedData struct {
 	SessionKey       SessionKey
 	SessionPublicKey []byte
 	KeyExp           C.DWORD
+	DHParamsOID      string
 }
 
 type BlockEncryptOptions struct {
@@ -116,15 +117,28 @@ type BlockEncryptOptions struct {
 const publicKeyLength = 64
 
 func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
-	provType := ProvGost2012_512
+	res := BlockEncryptedData{
+		KeyExp: opts.KeyExp,
+	}
+	if opts.Receiver.IsZero() {
+		return res, fmt.Errorf("receiver certificate not specified")
+	}
+	var provType ProvType
+	switch opts.Receiver.Info().PublicKeyAlgorithm() {
+	case GOSTR341012256:
+		provType = ProvGost2012
+	default:
+		provType = ProvGost2012_512
+	}
 	if opts.KeyExp == 0 {
 		opts.KeyExp = C.CALG_PRO_EXPORT
 	}
 	if opts.KeyAlg == 0 {
-		opts.KeyAlg = C.CALG_DH_GR3410_12_256_EPHEM
-	}
-	res := BlockEncryptedData{
-		KeyExp: opts.KeyExp,
+		if provType == ProvGost2012 {
+			opts.KeyAlg = C.CALG_DH_GR3410_12_256_EPHEM
+		} else {
+			opts.KeyAlg = C.CALG_DH_GR3410_12_512_EPHEM
+		}
 	}
 	var (
 		ctx Ctx
@@ -143,6 +157,14 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	keyData, err := pubKey.Encode(nil)
 	if err != nil {
 		return res, err
+	}
+	dhoid, err := pubKey.GetDHOID()
+	if err != nil {
+		return res, fmt.Errorf("getting receiver's key DH: %w", err)
+	}
+	res.DHParamsOID = dhoid
+	if err := ctx.SetDHOID(dhoid); err != nil {
+		return res, fmt.Errorf("setting context DH OID: %w", err)
 	}
 	ephemKey, err := ctx.GenKey(KeyPairID(opts.KeyAlg), C.CRYPT_EXPORTABLE)
 	if err != nil {

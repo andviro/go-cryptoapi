@@ -31,6 +31,12 @@ const (
 	ProvGost2012_512 ProvType = 81
 )
 
+// Public key algorithm IDs
+const (
+	GOSTR341012256 = "1.2.643.7.1.1.1.1"
+	GOSTR341012512 = "1.2.643.7.1.1.1.2"
+)
+
 // Ctx is a CSP context nessessary for cryptographic
 // functions.
 type Ctx struct {
@@ -52,9 +58,7 @@ type CryptoProvider struct {
 // EnumProviders returns slice of CryptoProvider structures, describing
 // available CSPs.
 func EnumProviders() (res []CryptoProvider, err error) {
-	var (
-		slen, provType, index C.DWORD
-	)
+	var slen, provType, index C.DWORD
 
 	res = make([]CryptoProvider, 0)
 
@@ -87,7 +91,7 @@ func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) 
 	return
 }
 
-//DeleteCtx deletes key container from CSP.
+// DeleteCtx deletes key container from CSP.
 func DeleteCtx(container, provider string, provType ProvType) error {
 	_, err := AcquireCtx(container, provider, provType, CryptDeleteKeyset)
 	return err
@@ -115,6 +119,16 @@ func (ctx Ctx) SetPassword(pwd string, at KeyPairID) error {
 	}
 	if C.CryptSetProvParam(ctx.hProv, pParam, (*C.BYTE)(pin), 0) == 0 {
 		return getErr("Error setting container password")
+	}
+	return nil
+}
+
+// SetDHOID changes D-H OID on key container to specified OID (typically, result of Key.GetDHOID method)
+func (ctx Ctx) SetDHOID(oid string) error {
+	ptr := unsafe.Pointer(C.CString(oid))
+	defer C.free(ptr)
+	if C.CryptSetProvParam(ctx.hProv, C.PP_DHOID, (*C.BYTE)(ptr), 0) == 0 {
+		return getErr("Error setting context DH OID")
 	}
 	return nil
 }
