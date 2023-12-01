@@ -106,6 +106,8 @@ type BlockEncryptedData struct {
 	SessionPublicKey []byte
 	KeyExp           C.DWORD
 	DHParamsOID      string
+	DigestOID        string
+	PublicKeyOID     string
 }
 
 type BlockEncryptOptions struct {
@@ -158,11 +160,22 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	if err != nil {
 		return res, err
 	}
+	// keyOID, err := pubKey.GetOID()
+	// if err != nil {
+	// 	return res, fmt.Errorf("getting receiver's key public key algorithm OID: %w", err)
+	// }
+	// res.PublicKeyOID = keyOID
+	res.PublicKeyOID = "1.2.643.7.1.1.1.2"
 	dhoid, err := pubKey.GetDHOID()
 	if err != nil {
 		return res, fmt.Errorf("getting receiver's key DH: %w", err)
 	}
 	res.DHParamsOID = dhoid
+	digestOID, err := pubKey.GetHashOID()
+	if err != nil {
+		return res, fmt.Errorf("getting receiver's key hash alg ID: %w", err)
+	}
+	res.DigestOID = digestOID
 	if err := ctx.SetDHOID(dhoid); err != nil {
 		return res, fmt.Errorf("setting context DH OID: %w", err)
 	}
@@ -216,12 +229,12 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	ctx, err := recipient.Context()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting recipient certificate context: %w", err)
 	}
 	defer ctx.Close()
 	userKey, err := ctx.Key(C.AT_KEYEXCHANGE)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting user key: %+v", err)
 	}
 	defer userKey.Close()
 	if data.KeyExp == 0 {
@@ -229,7 +242,7 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	}
 	graftedPublicKey, err := userKey.Encode(nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encoding user key: %+v", err)
 	}
 	// HAHAHAHACKY
 	copy(graftedPublicKey[len(graftedPublicKey)-publicKeyLength:], data.SessionPublicKey)

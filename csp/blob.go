@@ -4,7 +4,10 @@ package csp
 import "C"
 
 import (
+	"encoding/asn1"
 	"fmt"
+	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -15,6 +18,58 @@ type SessionKey struct {
 	EncryptedKey       []byte
 	MACKey             []byte
 	EncryptionParamSet []byte
+}
+
+// type Gost28147_89Key struct{}
+//
+// type Gost28147_89MAC struct{}
+
+//	Gost28147-89-EncryptedKey ::=   SEQUENCE {
+//	  encryptedKey         Gost28147-89-Key,
+//	  maskKey              [0] IMPLICIT Gost28147-89-Key
+//	                           OPTIONAL,
+//	  macKey               Gost28147-89-MAC
+//	}
+type Gost28147_89EncryptedKey struct {
+	EncryptedKey []byte
+	MaskKey      []byte `asn1:"tag:0,optional"`
+	MacKey       []byte
+}
+
+type SubjectPublicKeyInfo struct {
+	Algorithm             AlgorithmIdentifier
+	EncapsulatedPublicKey asn1.BitString
+}
+
+type SignParams struct {
+	DHParamsOID asn1.ObjectIdentifier
+	DigestOID   asn1.ObjectIdentifier
+}
+
+type AlgorithmIdentifier struct {
+	PublicKeyOID asn1.ObjectIdentifier
+	SignParams   SignParams
+}
+
+//	GostR3410-TransportParameters ::= SEQUENCE {
+//	  encryptionParamSet   OBJECT IDENTIFIER,
+//	  ephemeralPublicKey   [0] IMPLICIT SubjectPublicKeyInfo OPTIONAL,
+//	  ukm                  OCTET STRING
+//	}
+type GostR3410TransportParameters struct {
+	EncryptionParamSet asn1.ObjectIdentifier
+	EphemeralPublicKey SubjectPublicKeyInfo `asn1:"tag:0,optional"`
+	SeanceVector       []byte
+}
+
+//	GostR3410-KeyTransport ::= SEQUENCE {
+//	  sessionEncryptedKey   Gost28147-89-EncryptedKey,
+//	  transportParameters
+//	    [0] IMPLICIT GostR3410-TransportParameters OPTIONAL
+//	}
+type Gost2001KeyTransportASN1 struct {
+	SessionKey          Gost28147_89EncryptedKey
+	TransportParameters GostR3410TransportParameters `asn1:"tag:0,optional"`
 }
 
 type GOST2001KeyTransport [172]byte
@@ -88,6 +143,83 @@ func (s BlockEncryptedData) ToGOST2001KeyTransport() []byte {
 		res[82] = 1
 	}
 	return res[:]
+}
+
+func parseOID(src string) (asn1.ObjectIdentifier, error) {
+	var res asn1.ObjectIdentifier
+	for _, s := range strings.Split(src, ".") {
+		val, err := strconv.ParseUint(strings.TrimSpace(s), 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, int(val))
+	}
+	return res, nil
+}
+
+func (s BlockEncryptedData) ToGOST2001KeyTransportASN1() (res Gost2001KeyTransportASN1, _ error) {
+	dhoid, err := parseOID(s.DHParamsOID)
+	if err != nil {
+		return res, fmt.Errorf("parsing DHParamsOID: %+v", err)
+	}
+	digestOID, err := parseOID(s.DigestOID)
+	if err != nil {
+		return res, fmt.Errorf("parsing DigestOID: %+v", err)
+	}
+	publicKeyOID, err := parseOID(s.PublicKeyOID)
+	if err != nil {
+		return res, fmt.Errorf("parsing PublicKeyOID: %+v", err)
+	}
+	encapsulatedPubkey, err := asn1.Marshal(s.SessionPublicKey)
+	if err != nil {
+		return res, fmt.Errorf("marshaling SessionPublicKey: %+v", err)
+	}
+	res = Gost2001KeyTransportASN1{
+		SessionKey: Gost28147_89EncryptedKey{EncryptedKey: s.SessionKey.EncryptedKey, MacKey: s.SessionKey.MACKey},
+		TransportParameters: GostR3410TransportParameters{
+			EphemeralPublicKey: SubjectPublicKeyInfo{
+				Algorithm: AlgorithmIdentifier{
+					PublicKeyOID: publicKeyOID,
+					SignParams: SignParams{
+						DHParamsOID: dhoid,
+						DigestOID:   digestOID,
+					},
+				},
+				EncapsulatedPublicKey: asn1.BitString{Bytes: encapsulatedPubkey, BitLength: len(encapsulatedPubkey) * 8},
+			},
+			SeanceVector: s.SessionKey.SeanceVector,
+		},
+	}
+	var encapsulatedParamset struct{ OID asn1.ObjectIdentifier }
+	if _, err := asn1.UnmarshalWithParams(s.SessionKey.EncryptionParamSet, &encapsulatedParamset, ""); err != nil {
+		return res, fmt.Errorf("unmarshaling EncryptionParamSet: %+v", err)
+	}
+	res.TransportParameters.EncryptionParamSet = encapsulatedParamset.OID
+	return res, nil
+}
+
+func (k Gost2001KeyTransportASN1) ToBlockEncryptedData(dataStream []byte) (BlockEncryptedData, error) {
+	res := BlockEncryptedData{
+		IV:         dataStream[0:8],
+		CipherText: dataStream[8:],
+		SessionKey: SessionKey{
+			EncryptedKey: k.SessionKey.EncryptedKey,
+			MACKey:       k.SessionKey.MacKey,
+			SeanceVector: k.TransportParameters.SeanceVector,
+		},
+		DHParamsOID:  k.TransportParameters.EphemeralPublicKey.Algorithm.SignParams.DHParamsOID.String(),
+		DigestOID:    k.TransportParameters.EphemeralPublicKey.Algorithm.SignParams.DigestOID.String(),
+		PublicKeyOID: k.TransportParameters.EphemeralPublicKey.Algorithm.PublicKeyOID.String(),
+	}
+	_, err := asn1.Unmarshal(k.TransportParameters.EphemeralPublicKey.EncapsulatedPublicKey.Bytes, &res.SessionPublicKey)
+	if err != nil {
+		return res, err
+	}
+	encapsulatedParamset := struct{ OID asn1.ObjectIdentifier }{k.TransportParameters.EncryptionParamSet}
+	if res.SessionKey.EncryptionParamSet, err = asn1.Marshal(encapsulatedParamset); err != nil {
+		return res, nil
+	}
+	return res, nil
 }
 
 func (s GOST2001KeyTransport) ToBlockEncryptedData(dataStream []byte) BlockEncryptedData {

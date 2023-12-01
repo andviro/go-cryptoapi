@@ -107,6 +107,24 @@ func (key Key) GetDHOID() (string, error) {
 	return string(pbytes[:len(pbytes)-1]), nil
 }
 
+// GetHashOID retrieves key's HASH OID
+func (key Key) GetHashOID() (string, error) {
+	pbytes, err := key.GetParam(C.KP_HASHOID)
+	if err != nil {
+		return "", err
+	}
+	return string(pbytes[:len(pbytes)-1]), nil
+}
+
+// GetOID retrieves key's algorithm OID
+func (key Key) GetOID() (string, error) {
+	pbytes, err := key.GetParam(C.KP_OID)
+	if err != nil {
+		return "", err
+	}
+	return string(pbytes[:len(pbytes)-1]), nil
+}
+
 // SetIV sets key initialization vector
 func (key Key) SetIV(iv []byte) error {
 	if C.CryptSetKeyParam(key.hKey, C.KP_IV, C.LPBYTE(unsafe.Pointer(&iv[0])), 0) == 0 {

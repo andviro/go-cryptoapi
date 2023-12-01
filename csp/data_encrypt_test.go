@@ -126,12 +126,31 @@ func TestBlockEncryptData(t *testing.T) {
 		is.NotErr(err)
 		is.NotZero(data.CipherText)
 		t.Logf("%#v", data)
+		t.Logf("%d", len(data.SessionPublicKey))
 	})
+
+	transport, err := data.ToGOST2001KeyTransportASN1()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	t.Logf("%#v", transport)
 	t.Run("decrypt data bytes", func(t *testing.T) {
-		res, err := BlockDecrypt(crt, data)
-		is.NotErr(err)
-		t.Logf("%q", string(res))
-		is.Equal(string(res), testData)
+		dataStream := make([]byte, len(data.CipherText)+len(data.IV))
+		copy(dataStream, data.IV)
+		copy(dataStream[len(data.IV):], data.CipherText)
+		blockEncryptedData, err := transport.ToBlockEncryptedData(dataStream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%#v", blockEncryptedData)
+		t.Logf("%d", len(blockEncryptedData.SessionPublicKey))
+		data, err := BlockDecrypt(crt, blockEncryptedData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, []byte(testData)) {
+			t.Error("decrypted data does not match")
+		}
 	})
 }
 
