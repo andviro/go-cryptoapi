@@ -125,8 +125,9 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	if opts.Receiver.IsZero() {
 		return res, fmt.Errorf("receiver certificate not specified")
 	}
+	res.PublicKeyOID = opts.Receiver.Info().PublicKeyAlgorithm()
 	var provType ProvType
-	switch opts.Receiver.Info().PublicKeyAlgorithm() {
+	switch res.PublicKeyOID {
 	case GOSTR341012256:
 		provType = ProvGost2012
 	default:
@@ -160,12 +161,6 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 	if err != nil {
 		return res, err
 	}
-	// keyOID, err := pubKey.GetOID()
-	// if err != nil {
-	// 	return res, fmt.Errorf("getting receiver's key public key algorithm OID: %w", err)
-	// }
-	// res.PublicKeyOID = keyOID
-	res.PublicKeyOID = "1.2.643.7.1.1.1.2"
 	dhoid, err := pubKey.GetDHOID()
 	if err != nil {
 		return res, fmt.Errorf("getting receiver's key DH: %w", err)
