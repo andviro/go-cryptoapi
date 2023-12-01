@@ -2,20 +2,18 @@ package csp
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/asn1"
+	"os"
 	"testing"
 )
 
-//go:embed testdata/cipher1.bin
-var testCipher1 []byte
-
-//go:embed testdata/cipher2.bin
-var testCipher2 []byte
-
 func TestDecodeGostTransportASN(t *testing.T) {
 	var dest Gost2001KeyTransportASN1
-	if _, err := asn1.Unmarshal(testCipher2, &dest); err != nil {
+	testData, err := os.ReadFile("testdata/cipher2.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := asn1.Unmarshal(testData, &dest); err != nil {
 		t.Fatal(err)
 	}
 	var pubKey []byte
@@ -27,7 +25,7 @@ func TestDecodeGostTransportASN(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, testCipher2) {
+	if !bytes.Equal(data, testData) {
 		t.Error("marshaled and unmarshaled data do not match")
 	}
 }
