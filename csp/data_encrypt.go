@@ -65,6 +65,18 @@ func (eoid EncryptOID) CAlgID() (C.ALG_ID, error) {
 	return 0, fmt.Errorf("unsupported encryption algorithm: %s", eoid)
 }
 
+func (eoid EncryptOID) String() string {
+	switch eoid {
+	case EncryptOIDGost28147:
+		return C.CP_GOST_28147_ALG
+	case EncryptOIDMagma:
+		return C.CP_GOST_R3412_2015_M_ALG
+	case EncryptOIDKuznechik:
+		return C.CP_GOST_R3412_2015_K_ALG
+	}
+	return string(eoid)
+}
+
 const (
 	EncryptOIDGost28147 EncryptOID = C.szOID_CP_GOST_28147
 	EncryptOIDMagma     EncryptOID = C.szOID_CP_GOST_R3412_2015_M
@@ -135,7 +147,6 @@ type BlockEncryptedData struct {
 	DHParamsOID      string
 	DigestOID        string
 	PublicKeyOID     string
-	EncryptOID       EncryptOID
 }
 
 type BlockEncryptOptions struct {
@@ -156,19 +167,17 @@ func (b PublickeyBlob) ExtractPublicKey() []byte {
 }
 
 func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
-	if opts.KeyExp == 0 {
-		opts.KeyExp = C.CALG_PRO_EXPORT
+	res := BlockEncryptedData{}
+	if opts.Receiver.IsZero() {
+		return res, fmt.Errorf("receiver certificate not specified")
 	}
 	if opts.EncryptOID == "" {
 		opts.EncryptOID = EncryptOIDMagma
 	}
-	res := BlockEncryptedData{
-		KeyExp:     opts.KeyExp,
-		EncryptOID: opts.EncryptOID,
+	if opts.KeyExp == 0 {
+		opts.KeyExp = C.CALG_PRO_EXPORT
 	}
-	if opts.Receiver.IsZero() {
-		return res, fmt.Errorf("receiver certificate not specified")
-	}
+	res.KeyExp = opts.KeyExp
 	res.PublicKeyOID = opts.Receiver.Info().PublicKeyAlgorithm()
 	var provType ProvType
 	switch res.PublicKeyOID {
@@ -288,10 +297,13 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if err = agreeKey.SetAlgID(data.KeyExp); err != nil {
 		return nil, fmt.Errorf("setting algorithm ID to agree key: %+v", err)
 	}
-	sb := data.SessionKey.ToSimpleBlob()
+	sb, err := data.SessionKey.ToSimpleBlob()
+	if err != nil {
+		return nil, fmt.Errorf("converting session key to blob: %+v", err)
+	}
 	sessionKey, err := ctx.ImportKey(sb, &agreeKey)
 	if err != nil {
-		return nil, fmt.Errorf("importing session key: %+v", err)
+		return nil, fmt.Errorf("importing session key (%d bytes): %+v", len(sb), err)
 	}
 	defer sessionKey.Close()
 	if err := sessionKey.SetIV(data.IV); err != nil {

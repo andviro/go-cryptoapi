@@ -81,7 +81,6 @@ func (s SimpleBlob) ToSessionKey() (SessionKey, error) {
 		return res, fmt.Errorf("invalid blob size: %d (needed %d)", len(s), n)
 	}
 	sb := (*C.CRYPT_SIMPLEBLOB)(unsafe.Pointer(&s[0]))
-	fmt.Println(sb.tSimpleBlobHeader.EncryptKeyAlgId)
 	res.SeanceVector = C.GoBytes(unsafe.Pointer(&sb.bSV[0]), C.SEANCE_VECTOR_LEN)
 	res.EncryptedKey = C.GoBytes(unsafe.Pointer(&sb.bEncryptedKey[0]), C.G28147_KEYLEN)
 	res.MACKey = C.GoBytes(unsafe.Pointer(&sb.bMacKey[0]), C.EXPORT_IMIT_SIZE)
@@ -96,11 +95,24 @@ func (s SimpleBlob) ToSessionKey() (SessionKey, error) {
 	return res, nil
 }
 
-func (s SessionKey) ToSimpleBlob() SimpleBlob {
+func (s SessionKey) ToSimpleBlob() (SimpleBlob, error) {
 	n := int(unsafe.Offsetof(C.CRYPT_SIMPLEBLOB{}.bEncryptionParamSet)) + len(s.EncryptionParamSet)
 	res := make([]byte, n)
 	sb := (*C.CRYPT_SIMPLEBLOB)(unsafe.Pointer(&res[0]))
-	sb.tSimpleBlobHeader.BlobHeader.aiKeyAlg = C.CALG_GR3412_2015_M
+	var encapsulatedParamset struct{ OID asn1.ObjectIdentifier }
+	if _, err := asn1.UnmarshalWithParams(s.EncryptionParamSet, &encapsulatedParamset, ""); err != nil {
+		return res, fmt.Errorf("unmarshaling EncryptionParamSet: %+v", err)
+	}
+	var aiKeyAlg C.ALG_ID
+	switch encapsulatedParamset.OID.String() {
+	case C.szOID_CP_GOST_R3412_2015_M:
+		aiKeyAlg = C.CALG_GR3412_2015_M
+	case C.szOID_CP_GOST_R3412_2015_K:
+		aiKeyAlg = C.CALG_GR3412_2015_K
+	default:
+		aiKeyAlg = C.CALG_G28147
+	}
+	sb.tSimpleBlobHeader.BlobHeader.aiKeyAlg = aiKeyAlg
 	sb.tSimpleBlobHeader.BlobHeader.bType = C.SIMPLEBLOB
 	sb.tSimpleBlobHeader.BlobHeader.bVersion = C.BLOB_VERSION
 	sb.tSimpleBlobHeader.BlobHeader.reserved = 0
@@ -110,7 +122,7 @@ func (s SessionKey) ToSimpleBlob() SimpleBlob {
 	C.memcpy(unsafe.Pointer(&sb.bEncryptedKey), unsafe.Pointer(&s.EncryptedKey[0]), C.ulong(len(s.EncryptedKey)))
 	C.memcpy(unsafe.Pointer(&sb.bMacKey), unsafe.Pointer(&s.MACKey[0]), C.ulong(len(s.MACKey)))
 	C.memcpy(unsafe.Pointer(&sb.bEncryptionParamSet), unsafe.Pointer(&s.EncryptionParamSet[0]), C.ulong(len(s.EncryptionParamSet)))
-	return SimpleBlob(res)
+	return SimpleBlob(res), nil
 }
 
 func parseOID(src string) (asn1.ObjectIdentifier, error) {

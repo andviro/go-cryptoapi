@@ -30,7 +30,7 @@ func TestEncryptData(t *testing.T) {
 	t.Run("encrypt data bytes", func(t *testing.T) {
 		data, err = EncryptData([]byte(testData), EncryptOptions{
 			Receivers:  []Cert{crt},
-			EncryptOID: EncryptOIDKuznechik,
+			EncryptOID: EncryptOIDMagma,
 		})
 		is.NotErr(err)
 		is.NotZero(data)
@@ -120,39 +120,46 @@ func TestBlockEncryptData(t *testing.T) {
 
 	var data BlockEncryptedData
 	testData := "Test string"
-	t.Run("encrypt data bytes", func(t *testing.T) {
-		data, err = BlockEncrypt(BlockEncryptOptions{
-			Receiver: crt,
-		}, []byte(testData))
-		is.NotErr(err)
-		is.NotZero(data.CipherText)
-		t.Logf("%#v", data)
-		t.Logf("%d", len(data.SessionPublicKey))
-	})
+	for _, alg := range []EncryptOID{
+		EncryptOIDGost28147,
+		EncryptOIDMagma,
+		EncryptOIDKuznechik,
+	} {
+		t.Run(fmt.Sprintf("encrypt data bytes using %s", alg), func(t *testing.T) {
+			data, err = BlockEncrypt(BlockEncryptOptions{
+				EncryptOID: alg,
+				Receiver:   crt,
+			}, []byte(testData))
+			is.NotErr(err)
+			is.NotZero(data.CipherText)
+			t.Logf("%#v", data)
+			t.Logf("%d", len(data.SessionPublicKey))
+		})
 
-	transport, err := data.ToGOST2001KeyTransportASN1()
-	if err != nil {
-		t.Fatal(err.Error())
+		transport, err := data.ToGOST2001KeyTransportASN1()
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		t.Logf("%#v", transport)
+		t.Run(fmt.Sprintf("decrypt data bytes from %s", alg), func(t *testing.T) {
+			dataStream := make([]byte, len(data.CipherText)+len(data.IV))
+			copy(dataStream, data.IV)
+			copy(dataStream[len(data.IV):], data.CipherText)
+			blockEncryptedData, err := transport.ToBlockEncryptedData(dataStream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%#v", blockEncryptedData)
+			t.Logf("%d", len(blockEncryptedData.SessionPublicKey))
+			data, err := BlockDecrypt(crt, blockEncryptedData)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(data, []byte(testData)) {
+				t.Error("decrypted data does not match")
+			}
+		})
 	}
-	t.Logf("%#v", transport)
-	t.Run("decrypt data bytes", func(t *testing.T) {
-		dataStream := make([]byte, len(data.CipherText)+len(data.IV))
-		copy(dataStream, data.IV)
-		copy(dataStream[len(data.IV):], data.CipherText)
-		blockEncryptedData, err := transport.ToBlockEncryptedData(dataStream)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("%#v", blockEncryptedData)
-		t.Logf("%d", len(blockEncryptedData.SessionPublicKey))
-		data, err := BlockDecrypt(crt, blockEncryptedData)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(data, []byte(testData)) {
-			t.Error("decrypted data does not match")
-		}
-	})
 }
 
 func autoDecode(src []byte) ([]byte, error) {
@@ -211,7 +218,7 @@ func TestBlockDecryptDataFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data.SessionPublicKey = pkBlob[len(pkBlob)-64:]
+	data.SessionPublicKey = pkBlob
 	if data.IV, err = ioutil.ReadFile("testdata/vector.bin"); err != nil {
 		t.Fatal(err)
 	}
