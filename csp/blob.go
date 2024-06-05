@@ -74,6 +74,25 @@ type Gost2001KeyTransportASN1 struct {
 
 type GOST2001KeyTransport [172]byte
 
+var gost2001KeyTransport = GOST2001KeyTransport{
+	0x30, 0x81, 0xA9, 0x30, 0x28, 4, 0x20,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // offs 7: len 32 = Session Encrypted Key
+	4, 4,
+	0, 0, 0, 0, // offs 41 len 4 = Session Mac Key
+	0xA0, 0x7D,
+	6, 9, 0x2A, 0x85, 3, 7, 1, 2, 5, 1, 1, // OBJECT IDENTIFIER 1.2.643.7.1.2.5.1.1 tc26CipherZ (TC26 params Z for GOST 28147-89)
+	0xA0, 0x66, 0x30, 0x1F,
+	6, 8, 0x2A, 0x85, 3, 7, 1, 1, 1, 1, // OBJECT IDENTIFIER 1.2.643.7.1.1.1.1 gost2012PublicKey256 (GOST R 34.10-2012 256 bit public key)
+	0x30, 0x13,
+	6, 7, 0x2A, 0x85, 3, 2, 2, 0x24, 0, // OBJECT IDENTIFIER 1.2.643.2.2.36.0 cryptoProSignXA (CryptoPro ell.curve XA for GOST R 34.10-2001)
+	6, 8, 0x2A, 0x85, 3, 7, 1, 1, 2, 2, 3, // OBJECT IDENTIFIER 1.2.643.7.1.1.2.2 gost2012Digest256 (GOST R 34.11-2012 256 bit digest)
+	0x43, 0, 4, 0x40,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // offs 98 = : len 64 = Session Public Key
+	0x4, 0x8,
+	0, 0, 0, 0, 0, 0, 0, 0, // offs 164: len 8 = Session SV
+}
+
 func (s SimpleBlob) ToSessionKey() (SessionKey, error) {
 	var res SessionKey
 	n := int(unsafe.Offsetof(C.CRYPT_SIMPLEBLOB{}.bEncryptionParamSet))
@@ -95,34 +114,35 @@ func (s SimpleBlob) ToSessionKey() (SessionKey, error) {
 	return res, nil
 }
 
-func (s SessionKey) ToSimpleBlob() (SimpleBlob, error) {
+func (s SessionKey) ToSimpleBlob() SimpleBlob {
 	n := int(unsafe.Offsetof(C.CRYPT_SIMPLEBLOB{}.bEncryptionParamSet)) + len(s.EncryptionParamSet)
 	res := make([]byte, n)
 	sb := (*C.CRYPT_SIMPLEBLOB)(unsafe.Pointer(&res[0]))
-	var encapsulatedParamset struct{ OID asn1.ObjectIdentifier }
-	if _, err := asn1.UnmarshalWithParams(s.EncryptionParamSet, &encapsulatedParamset, ""); err != nil {
-		return res, fmt.Errorf("unmarshaling EncryptionParamSet: %+v", err)
-	}
-	var aiKeyAlg C.ALG_ID
-	switch encapsulatedParamset.OID.String() {
-	case C.szOID_CP_GOST_R3412_2015_M:
-		aiKeyAlg = C.CALG_GR3412_2015_M
-	case C.szOID_CP_GOST_R3412_2015_K:
-		aiKeyAlg = C.CALG_GR3412_2015_K
-	default:
-		aiKeyAlg = C.CALG_G28147
-	}
-	sb.tSimpleBlobHeader.BlobHeader.aiKeyAlg = aiKeyAlg
+	sb.tSimpleBlobHeader.BlobHeader.aiKeyAlg = C.CALG_G28147
 	sb.tSimpleBlobHeader.BlobHeader.bType = C.SIMPLEBLOB
 	sb.tSimpleBlobHeader.BlobHeader.bVersion = C.BLOB_VERSION
 	sb.tSimpleBlobHeader.BlobHeader.reserved = 0
 	sb.tSimpleBlobHeader.EncryptKeyAlgId = C.CALG_G28147
-	sb.tSimpleBlobHeader.Magic = C.SIMPLEBLOB_MAGIC
+	sb.tSimpleBlobHeader.Magic = C.G28147_MAGIC
 	C.memcpy(unsafe.Pointer(&sb.bSV), unsafe.Pointer(&s.SeanceVector[0]), C.ulong(len(s.SeanceVector)))
 	C.memcpy(unsafe.Pointer(&sb.bEncryptedKey), unsafe.Pointer(&s.EncryptedKey[0]), C.ulong(len(s.EncryptedKey)))
 	C.memcpy(unsafe.Pointer(&sb.bMacKey), unsafe.Pointer(&s.MACKey[0]), C.ulong(len(s.MACKey)))
 	C.memcpy(unsafe.Pointer(&sb.bEncryptionParamSet), unsafe.Pointer(&s.EncryptionParamSet[0]), C.ulong(len(s.EncryptionParamSet)))
-	return SimpleBlob(res), nil
+	return SimpleBlob(res)
+}
+
+func (s BlockEncryptedData) ToGOST2001KeyTransport() []byte {
+	res := gost2001KeyTransport
+	copy(res[7:7+32], s.SessionKey.EncryptedKey)
+	copy(res[41:41+4], s.SessionKey.MACKey)
+	copy(res[98:98+64], s.SessionPublicKey)
+	copy(res[164:164+8], s.SessionKey.SeanceVector)
+	if s.DHParamsOID == "1.2.643.2.2.35.1" {
+		// TODO set proper OID value based on DHParamsOID
+		res[81] = 35
+		res[82] = 1
+	}
+	return res[:]
 }
 
 func parseOID(src string) (asn1.ObjectIdentifier, error) {
@@ -200,4 +220,22 @@ func (k Gost2001KeyTransportASN1) ToBlockEncryptedData(dataStream []byte) (Block
 		return res, nil
 	}
 	return res, nil
+}
+
+func (s GOST2001KeyTransport) ToBlockEncryptedData(dataStream []byte) BlockEncryptedData {
+	res := BlockEncryptedData{
+		IV:         dataStream[0:8],
+		CipherText: dataStream[8:],
+		SessionKey: SessionKey{
+			EncryptedKey: s[7 : 7+32],
+			MACKey:       s[41 : 41+4],
+			SeanceVector: s[164 : 164+8],
+		},
+		SessionPublicKey: s[98 : 98+64],
+		DHParamsOID:      "1.2.643.2.2.36.0",
+	}
+	if s[81] == 35 {
+		res.DHParamsOID = "1.2.643.2.2.35.1"
+	}
+	return res
 }

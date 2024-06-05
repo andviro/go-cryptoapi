@@ -9,14 +9,14 @@ typedef struct {
 	PCCERT_CONTEXT *rgRecipientCerts;
 } _ENCRYPT_DATA_PARAMS;
 
-static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRecipients, LPSTR encryptOID) {
+static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRecipients) {
 	_ENCRYPT_DATA_PARAMS *res = malloc(sizeof(_ENCRYPT_DATA_PARAMS));
 	memset(res, 0, sizeof(_ENCRYPT_DATA_PARAMS));
 
 	res->params.cbSize = sizeof(CMSG_ENVELOPED_ENCODE_INFO);
     res->params.dwMsgEncodingType = MY_ENC_TYPE;
 	res->params.hCryptProv = hCryptProv;
-	res->params.ContentEncryptionAlgorithm.pszObjId = encryptOID;
+	res->params.ContentEncryptionAlgorithm.pszObjId = (LPSTR)ENCRYPT_OID;
 
 	res->cRecipients = (DWORD)cRecipients;
 	res->rgRecipientCerts = malloc(sizeof(PCCERT_CONTEXT) * cRecipients);
@@ -25,7 +25,6 @@ static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRec
 }
 
 static void freeEncryptDataParams(_ENCRYPT_DATA_PARAMS *params) {
-	free(params->params.ContentEncryptionAlgorithm.pszObjId);
 	free(params->rgRecipientCerts);
 	free(params);
 }
@@ -51,38 +50,6 @@ import (
 	"unsafe"
 )
 
-type EncryptOID string
-
-func (eoid EncryptOID) CAlgID() (C.ALG_ID, error) {
-	switch eoid {
-	case EncryptOIDGost28147:
-		return C.CALG_G28147, nil
-	case EncryptOIDMagma:
-		return C.CALG_GR3412_2015_M, nil
-	case EncryptOIDKuznechik:
-		return C.CALG_GR3412_2015_K, nil
-	}
-	return 0, fmt.Errorf("unsupported encryption algorithm: %s", eoid)
-}
-
-func (eoid EncryptOID) String() string {
-	switch eoid {
-	case EncryptOIDGost28147:
-		return C.CP_GOST_28147_ALG
-	case EncryptOIDMagma:
-		return C.CP_GOST_R3412_2015_M_ALG
-	case EncryptOIDKuznechik:
-		return C.CP_GOST_R3412_2015_K_ALG
-	}
-	return string(eoid)
-}
-
-const (
-	EncryptOIDGost28147 EncryptOID = C.szOID_CP_GOST_28147
-	EncryptOIDMagma     EncryptOID = C.szOID_CP_GOST_R3412_2015_M
-	EncryptOIDKuznechik EncryptOID = C.szOID_CP_GOST_R3412_2015_K
-)
-
 // EncryptData encrypts arbitrary byte slice for one or more recipient
 // certificates
 func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
@@ -98,13 +65,7 @@ func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
 			rErr = fmt.Errorf("Encrypting data: %v (original error: %v)", err, rErr)
 		}
 	}()
-	var encryptOID C.LPSTR
-	if options.EncryptOID != "" {
-		encryptOID = C.CString(string(options.EncryptOID))
-	} else {
-		encryptOID = C.CString(string(EncryptOIDMagma))
-	}
-	edp := C.mkEncryptDataParams(ctx.hProv, C.int(len(options.Receivers)), encryptOID)
+	edp := C.mkEncryptDataParams(ctx.hProv, C.int(len(options.Receivers)))
 	defer C.freeEncryptDataParams(edp)
 
 	for i, receiverCert := range options.Receivers {
@@ -142,7 +103,7 @@ type BlockEncryptedData struct {
 	IV               []byte
 	CipherText       []byte
 	SessionKey       SessionKey
-	SessionPublicKey PublickeyBlob
+	SessionPublicKey []byte
 	KeyExp           C.DWORD
 	DHParamsOID      string
 	DigestOID        string
@@ -150,34 +111,20 @@ type BlockEncryptedData struct {
 }
 
 type BlockEncryptOptions struct {
-	Receiver   Cert
-	KeyAlg     C.ALG_ID // If not set, C.CALG_DH_GR3410_12_256_EPHEM is used
-	KeyExp     C.DWORD  // If not set, C.CALG_PRO_EXPORT is used
-	EncryptOID EncryptOID
+	Receiver Cert
+	KeyAlg   C.ALG_ID // If not set, C.CALG_DH_GR3410_12_256_EPHEM is used
+	KeyExp   C.DWORD  // If not set, C.CALG_PRO_EXPORT is used
 }
 
 const publicKeyLength = 64
 
-type PublickeyBlob []byte
-
-func (b PublickeyBlob) ExtractPublicKey() []byte {
-	pkBlob := (*C.CRYPT_PUBLICKEYBLOB)(unsafe.Pointer(&b[0]))
-	keyLen := pkBlob.tPublicKeyParam.KeyParam.BitLen * 8
-	return b[len(b)-int(keyLen):]
-}
-
 func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, error) {
-	res := BlockEncryptedData{}
+	res := BlockEncryptedData{
+		KeyExp: opts.KeyExp,
+	}
 	if opts.Receiver.IsZero() {
 		return res, fmt.Errorf("receiver certificate not specified")
 	}
-	if opts.EncryptOID == "" {
-		opts.EncryptOID = EncryptOIDMagma
-	}
-	if opts.KeyExp == 0 {
-		opts.KeyExp = C.CALG_PRO_EXPORT
-	}
-	res.KeyExp = opts.KeyExp
 	res.PublicKeyOID = opts.Receiver.Info().PublicKeyAlgorithm()
 	var provType ProvType
 	switch res.PublicKeyOID {
@@ -185,6 +132,9 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 		provType = ProvGost2012
 	default:
 		provType = ProvGost2012_512
+	}
+	if opts.KeyExp == 0 {
+		opts.KeyExp = C.CALG_PRO_EXPORT
 	}
 	if opts.KeyAlg == 0 {
 		if provType == ProvGost2012 {
@@ -229,24 +179,20 @@ func BlockEncrypt(opts BlockEncryptOptions, data []byte) (BlockEncryptedData, er
 		return res, fmt.Errorf("generating ephemeral key: %w", err)
 	}
 	defer ephemKey.Close()
-	encodedEphemKey, err := ephemKey.Encode(nil)
+	res.SessionPublicKey, err = ephemKey.Encode(nil)
 	if err != nil {
 		return res, fmt.Errorf("encoding ephemeral key: %w", err)
 	}
-	res.SessionPublicKey = PublickeyBlob(encodedEphemKey)
+	res.SessionPublicKey = res.SessionPublicKey[len(res.SessionPublicKey)-publicKeyLength:]
 	agreeKey, err := ctx.ImportKey(keyData, &ephemKey)
 	if err != nil {
 		return res, fmt.Errorf("importing session public key: %w", err)
 	}
 	defer agreeKey.Close()
-	if err = agreeKey.SetAlgID(opts.KeyExp); err != nil {
+	if err := agreeKey.SetAlgID(opts.KeyExp); err != nil {
 		return res, fmt.Errorf("setting algorithm ID to agree key: %w", err)
 	}
-	sessionKeyAlg, err := opts.EncryptOID.CAlgID()
-	if err != nil {
-		return res, err
-	}
-	sessionKey, err := ctx.GenKey(KeyPairID(sessionKeyAlg), C.CRYPT_EXPORTABLE)
+	sessionKey, err := ctx.GenKey(C.CALG_G28147, C.CRYPT_EXPORTABLE)
 	if err != nil {
 		return res, fmt.Errorf("generating session key: %w", err)
 	}
@@ -289,7 +235,13 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if data.KeyExp == 0 {
 		data.KeyExp = C.CALG_PRO_EXPORT
 	}
-	agreeKey, err := ctx.ImportKey(SimpleBlob(data.SessionPublicKey), &userKey)
+	graftedPublicKey, err := userKey.Encode(nil)
+	if err != nil {
+		return nil, fmt.Errorf("encoding user key: %+v", err)
+	}
+	// HAHAHAHACKY
+	copy(graftedPublicKey[len(graftedPublicKey)-publicKeyLength:], data.SessionPublicKey)
+	agreeKey, err := ctx.ImportKey(graftedPublicKey, &userKey)
 	if err != nil {
 		return nil, fmt.Errorf("importing agree key: %+v", err)
 	}
@@ -297,13 +249,10 @@ func BlockDecrypt(recipient Cert, data BlockEncryptedData) ([]byte, error) {
 	if err = agreeKey.SetAlgID(data.KeyExp); err != nil {
 		return nil, fmt.Errorf("setting algorithm ID to agree key: %+v", err)
 	}
-	sb, err := data.SessionKey.ToSimpleBlob()
-	if err != nil {
-		return nil, fmt.Errorf("converting session key to blob: %+v", err)
-	}
+	sb := data.SessionKey.ToSimpleBlob()
 	sessionKey, err := ctx.ImportKey(sb, &agreeKey)
 	if err != nil {
-		return nil, fmt.Errorf("importing session key (%d bytes): %+v", len(sb), err)
+		return nil, fmt.Errorf("importing session key: %+v", err)
 	}
 	defer sessionKey.Close()
 	if err := sessionKey.SetIV(data.IV); err != nil {
