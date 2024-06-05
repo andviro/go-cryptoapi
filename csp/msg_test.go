@@ -201,7 +201,8 @@ func TestMsgEncrypt_Decrypt(t *testing.T) {
 	t.Run("encrypt", func(t *testing.T) {
 		data := bytes.NewBufferString(testData)
 		msg, err := OpenToEncrypt(dest, EncryptOptions{
-			Receivers: []Cert{crt},
+			Receivers:  []Cert{crt},
+			EncryptOID: EncryptOIDMagma,
 		})
 		is.NotErr(err)
 

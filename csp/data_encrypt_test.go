@@ -29,7 +29,8 @@ func TestEncryptData(t *testing.T) {
 	testData := "Test string"
 	t.Run("encrypt data bytes", func(t *testing.T) {
 		data, err = EncryptData([]byte(testData), EncryptOptions{
-			Receivers: []Cert{crt},
+			Receivers:  []Cert{crt},
+			EncryptOID: EncryptOIDMagma,
 		})
 		is.NotErr(err)
 		is.NotZero(data)

@@ -9,14 +9,14 @@ typedef struct {
 	PCCERT_CONTEXT *rgRecipientCerts;
 } _ENCRYPT_DATA_PARAMS;
 
-static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRecipients) {
+static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRecipients, LPSTR encryptOID) {
 	_ENCRYPT_DATA_PARAMS *res = malloc(sizeof(_ENCRYPT_DATA_PARAMS));
 	memset(res, 0, sizeof(_ENCRYPT_DATA_PARAMS));
 
 	res->params.cbSize = sizeof(CMSG_ENVELOPED_ENCODE_INFO);
     res->params.dwMsgEncodingType = MY_ENC_TYPE;
 	res->params.hCryptProv = hCryptProv;
-	res->params.ContentEncryptionAlgorithm.pszObjId = (LPSTR)ENCRYPT_OID;
+	res->params.ContentEncryptionAlgorithm.pszObjId = encryptOID;
 
 	res->cRecipients = (DWORD)cRecipients;
 	res->rgRecipientCerts = malloc(sizeof(PCCERT_CONTEXT) * cRecipients);
@@ -25,6 +25,7 @@ static _ENCRYPT_DATA_PARAMS *mkEncryptDataParams(HCRYPTPROV hCryptProv, int cRec
 }
 
 static void freeEncryptDataParams(_ENCRYPT_DATA_PARAMS *params) {
+	free(params->params.ContentEncryptionAlgorithm.pszObjId);
 	free(params->rgRecipientCerts);
 	free(params);
 }
@@ -65,7 +66,13 @@ func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
 			rErr = fmt.Errorf("Encrypting data: %v (original error: %v)", err, rErr)
 		}
 	}()
-	edp := C.mkEncryptDataParams(ctx.hProv, C.int(len(options.Receivers)))
+	var encryptOID C.LPSTR
+	if options.EncryptOID != "" {
+		encryptOID = C.CString(string(options.EncryptOID))
+	} else {
+		encryptOID = C.CString(string(EncryptOIDGost28147))
+	}
+	edp := C.mkEncryptDataParams(ctx.hProv, C.int(len(options.Receivers)), encryptOID)
 	defer C.freeEncryptDataParams(edp)
 
 	for i, receiverCert := range options.Receivers {
