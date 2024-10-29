@@ -87,7 +87,7 @@ func (h *Hash) Close() error {
 
 func write(dest C.HCRYPTHASH, buf []byte) (n int, err error) {
 	var ptr unsafe.Pointer
-	if len(buf) > 0 {
+	if n = len(buf); n > 0 {
 		ptr = unsafe.Pointer(&buf[0])
 	}
 	if C.CryptHashData(dest, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) == 0 {
