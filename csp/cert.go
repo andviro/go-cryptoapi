@@ -1,6 +1,21 @@
 package csp
 
-//#include "common.h"
+/*
+#include "common.h"
+
+static CERT_CHAIN_PARA *mkCertChainPara() {
+    CERT_CHAIN_PARA  *res = malloc(sizeof(CERT_CHAIN_PARA));
+    memset(res, 0, sizeof(CERT_CHAIN_PARA));
+    res->cbSize = sizeof(CERT_CHAIN_PARA);
+    res->RequestedUsage.dwType = USAGE_MATCH_TYPE_AND;
+    res->RequestedUsage.Usage.cUsageIdentifier=0;
+    res->RequestedUsage.Usage.rgpszUsageIdentifier=NULL;
+    //res->RequestedIssuancePolicy=NULL;
+    //res->fCheckRevocationFreshnessTime=FALSE;
+    //res->dwUrlRetrievalTimeout=0;
+	return res;
+}
+*/
 import "C"
 
 import (
@@ -113,6 +128,79 @@ func (c Cert) Context() (Ctx, error) {
 	}
 	if C.CryptAcquireContextW(&res.hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) == 0 {
 		return res, getErr("Error acquiring context")
+	}
+	return res, nil
+}
+
+type CertChain struct {
+	pCertChain C.PCCERT_CHAIN_CONTEXT
+}
+
+func (c CertChain) Close() {
+	if c.pCertChain == nil {
+		return
+	}
+	C.CertFreeCertificateChain(c.pCertChain)
+}
+
+type CertGetChainOptions struct {
+	CacheEndCert          bool
+	ThreadStoreSync       bool
+	CacheOnlyURLRetrieval bool
+	UseLocalMachineStore  bool
+	EnableCacheAutoUpdate bool
+	EnableShareStore      bool
+	RevocationCheckMode   CertChainRevocationCheckMode
+}
+
+type CertChainRevocationCheckMode int
+
+const (
+	RevocationCheckEndCert CertChainRevocationCheckMode = iota
+	RevocationCheckChain
+	RevocationCheckChainExcludeRoot
+	RevocationCheckCacheOnly
+)
+
+func (cgco CertGetChainOptions) ToFlags() C.DWORD {
+	var res C.DWORD
+	if cgco.CacheEndCert {
+		res |= C.CERT_CHAIN_CACHE_END_CERT
+	}
+	if cgco.ThreadStoreSync {
+		res |= C.CERT_CHAIN_THREAD_STORE_SYNC
+	}
+	if cgco.CacheOnlyURLRetrieval {
+		res |= C.CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL
+	}
+	if cgco.UseLocalMachineStore {
+		res |= C.CERT_CHAIN_USE_LOCAL_MACHINE_STORE
+	}
+	if cgco.EnableCacheAutoUpdate {
+		res |= C.CERT_CHAIN_ENABLE_CACHE_AUTO_UPDATE
+	}
+	if cgco.EnableShareStore {
+		res |= C.CERT_CHAIN_ENABLE_SHARE_STORE
+	}
+	switch cgco.RevocationCheckMode {
+	case RevocationCheckEndCert:
+		res |= C.CERT_CHAIN_REVOCATION_CHECK_END_CERT
+	case RevocationCheckChain:
+		res |= C.CERT_CHAIN_REVOCATION_CHECK_CHAIN
+	case RevocationCheckChainExcludeRoot:
+		res |= C.CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT
+	case RevocationCheckCacheOnly:
+		res |= C.CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY
+	}
+	return res
+}
+
+// GetChain requests certificate trust chain from
+func (c Cert) GetChain(opts CertGetChainOptions) (res CertChain, _ error) {
+	pccp := C.mkCertChainPara()
+	defer C.free(unsafe.Pointer(pccp))
+	if C.CertGetCertificateChain(nil, c.pCert, nil, nil, pccp, opts.ToFlags(), nil, &res.pCertChain) == 0 {
+		return res, getErr("Error getting certificate chain")
 	}
 	return res, nil
 }

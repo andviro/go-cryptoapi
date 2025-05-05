@@ -139,3 +139,24 @@ func TestExtractCert(t *testing.T) {
 	data := crt.Bytes()
 	is.NotZero(data)
 }
+
+func TestCert_GetChain(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for sign test not provided")
+	}
+	is := is.New(t)
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+	chain, err := crt.GetChain(CertGetChainOptions{RevocationCheckMode: RevocationCheckChain, CacheEndCert: true})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	t.Logf("%v/%v", chain.pCertChain.TrustStatus.dwErrorStatus, chain.pCertChain.TrustStatus.dwInfoStatus)
+	defer chain.Close()
+}
