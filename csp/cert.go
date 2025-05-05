@@ -137,10 +137,28 @@ type CertChain struct {
 }
 
 func (c CertChain) Close() {
-	if c.pCertChain == nil {
+	if c.IsZero() {
 		return
 	}
 	C.CertFreeCertificateChain(c.pCertChain)
+}
+
+func (c CertChain) IsZero() bool {
+	return c.pCertChain == nil
+}
+
+func (c CertChain) GetTrustStatus() CertTrustStatus {
+	if c.IsZero() {
+		return 0
+	}
+	return CertTrustStatus(c.pCertChain.TrustStatus.dwErrorStatus)
+}
+
+func (c CertChain) GetTrustInfo() CertTrustInfo {
+	if c.IsZero() {
+		return 0
+	}
+	return CertTrustInfo(c.pCertChain.TrustStatus.dwInfoStatus)
 }
 
 type CertGetChainOptions struct {
