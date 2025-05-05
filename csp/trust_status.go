@@ -6,7 +6,12 @@ package csp
 import "C"
 import "strings"
 
-type CertTrustStatus C.DWORD
+type CertTrustStatus struct {
+	Error CertTrustError
+	Info  CertTrustInfo
+}
+
+type CertTrustError C.DWORD
 
 var trustStatusBits = []struct {
 	desc string
@@ -37,7 +42,7 @@ var trustStatusBits = []struct {
 	{"CERT_TRUST_CTL_IS_NOT_VALID_FOR_USAGE", 0x00080000},
 }
 
-func (cts CertTrustStatus) String() string {
+func (cts CertTrustError) String() string {
 	if cts == 0 {
 		return "CERT_TRUST_NO_ERROR"
 	}

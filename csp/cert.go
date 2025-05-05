@@ -149,9 +149,9 @@ func (c CertChain) IsZero() bool {
 
 func (c CertChain) GetTrustStatus() CertTrustStatus {
 	if c.IsZero() {
-		return 0
+		return CertTrustStatus{}
 	}
-	return CertTrustStatus(c.pCertChain.TrustStatus.dwErrorStatus)
+	return CertTrustStatus{CertTrustError(c.pCertChain.TrustStatus.dwErrorStatus), CertTrustInfo(c.pCertChain.TrustStatus.dwInfoStatus)}
 }
 
 func (c CertChain) GetTrustInfo() CertTrustInfo {

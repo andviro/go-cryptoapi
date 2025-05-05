@@ -157,6 +157,6 @@ func TestCert_GetChain(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	t.Logf("%q, %q", chain.GetTrustStatus(), chain.GetTrustInfo())
+	t.Logf("%+v", chain.GetTrustStatus())
 	defer chain.Close()
 }
