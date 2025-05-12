@@ -92,7 +92,7 @@ func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
 
 // DecryptData decrypts byte slice using provided certificate store for private
 // key lookup
-func DecryptData(data []byte, store *CertStore) ([]byte, error) {
+func DecryptData(data []byte, store CertStore) ([]byte, error) {
 	pdp := C.mkDecryptMessagePara(&store.hStore)
 	defer C.free(unsafe.Pointer(pdp))
 	var slen C.DWORD
