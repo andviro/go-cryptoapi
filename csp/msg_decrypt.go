@@ -6,11 +6,11 @@ package csp
 extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
+
 import (
+	"errors"
 	"io"
 	"unsafe"
-
-	"errors"
 )
 
 type Decryptor struct {
@@ -20,13 +20,13 @@ type Decryptor struct {
 	maxHeaderSize int
 	lastError     error
 	decrypting    bool
-	store         *CertStore
+	store         CertStore
 }
 
 // OpenToDecrypt creates new Msg in decrypt mode. Maximum header size, if
 // non-zero, limits size of data read from message until envelope recipient
 // info is available.
-func OpenToDecrypt(dest io.Writer, store *CertStore, maxHeaderSize int) (msg *Decryptor, rErr error) {
+func OpenToDecrypt(dest io.Writer, store CertStore, maxHeaderSize int) (msg *Decryptor, rErr error) {
 	res := new(Decryptor)
 	res.maxHeaderSize = maxHeaderSize
 	res.store = store
@@ -46,7 +46,6 @@ func OpenToDecrypt(dest io.Writer, store *CertStore, maxHeaderSize int) (msg *De
 		return nil, getErr("Error opening message for decrypting")
 	}
 	return res, nil
-
 }
 
 // Write encodes provided bytes into message output data stream
@@ -101,7 +100,7 @@ func (msg *Decryptor) proceed(i int, n int, ctx Ctx) (int, error) {
 	return n, msg.lastError
 }
 
-func (msg *Decryptor) getRecipientCert(i int, store *CertStore) (*Cert, error) {
+func (msg *Decryptor) getRecipientCert(i int, store CertStore) (*Cert, error) {
 	var cbData C.DWORD
 	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_INFO_PARAM, C.DWORD(i), nil, &cbData) {
 		return nil, getErr("Error acquiring message recipient info length")
