@@ -1,6 +1,6 @@
 module github.com/andviro/go-cryptoapi/v2
 
-go 1.21
+go 1.24
 
 require (
 	github.com/andviro/goldie v0.0.0-20180822203610-4d8717fa0de8
