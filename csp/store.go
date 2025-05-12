@@ -51,15 +51,15 @@ func MemoryStore() (res CertStore, err error) {
 
 // SystemStore returns handle to certificate store with certain name, using
 // default system cryptoprovider
-func SystemStore(name string) (*CertStore, error) {
+func SystemStore(name string) (CertStore, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
 	hStore := C.openStoreSystem(C.HCRYPTPROV(0), (*C.CHAR)(cName))
 	if hStore == C.HCERTSTORE(nil) {
-		return nil, getErr("Error getting system cert store")
+		return CertStore{}, getErr("Error getting system cert store")
 	}
-	return &CertStore{hStore: hStore}, nil
+	return CertStore{hStore: hStore}, nil
 }
 
 // CertStore method returns handle to certificate store in certain CSP context
