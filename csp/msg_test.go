@@ -120,7 +120,9 @@ func TestMsgEncode(t *testing.T) {
 		is.NotErr(err)
 		is.NotErr(msg.Close())
 		is.NotZero(dest.Bytes())
-		ioutil.WriteFile("testdata/enc.bin", dest.Bytes(), 0666)
+		if err := os.WriteFile("testdata/enc.bin", dest.Bytes(), 0666); err != nil {
+			t.Fatal(err)
+		}
 	})
 	t.Run("decode", func(t *testing.T) {
 		buf := new(bytes.Buffer)
@@ -151,7 +153,9 @@ func TestMsgEncode_Detached(t *testing.T) {
 	//     data, err := ioutil.ReadFile("testdata/file.bin")
 	//     is.NotErr(err)
 	data := []byte(strings.Repeat("test data", 1))
-	ioutil.WriteFile("testdata/dest.bin", data, 0666)
+	if err := os.WriteFile("testdata/dest.bin", data, 0666); err != nil {
+		t.Fatal(err)
+	}
 	dest := new(bytes.Buffer)
 	t.Run("sign", func(t *testing.T) {
 		msg, err := OpenToEncode(dest, EncodeOptions{
@@ -163,7 +167,9 @@ func TestMsgEncode_Detached(t *testing.T) {
 		is.NotErr(err)
 		is.NotErr(msg.Close())
 		is.NotZero(dest.Bytes())
-		ioutil.WriteFile("testdata/dest.sig", dest.Bytes(), 0666)
+		if err := os.WriteFile("testdata/dest.sig", dest.Bytes(), 0666); err != nil {
+			t.Fatal(err)
+		}
 	})
 	t.Run("verify", func(t *testing.T) {
 		msg, err := OpenToVerify(dest.Bytes())
@@ -175,6 +181,72 @@ func TestMsgEncode_Detached(t *testing.T) {
 		is.NotZero(store)
 		certs := store.Certs()
 		for _, c := range certs {
+			is.NotZero(len(c.Bytes()))
+			is.Lax().NotErr(msg.Verify(c))
+		}
+		is.NotErr(msg.Close())
+	})
+}
+
+func TestMsgEncode_DetachedNoCert(t *testing.T) {
+	if signCertThumb == "" {
+		t.Skip("certificate for sign test not provided")
+	}
+	is := is.New(t)
+
+	store, err := SystemStore("MY")
+	is.NotErr(err)
+	defer store.Close()
+
+	crt, err := store.GetByThumb(signCertThumb)
+	is.NotErr(err)
+	defer crt.Close()
+
+	//     data, err := ioutil.ReadFile("testdata/file.bin")
+	//     is.NotErr(err)
+	data := []byte(strings.Repeat("test data", 1))
+	if err := os.WriteFile("testdata/dest-nocert.bin", data, 0666); err != nil {
+		t.Fatal(err)
+	}
+	dest := new(bytes.Buffer)
+	t.Run("sign", func(t *testing.T) {
+		msg, err := OpenToEncode(dest, EncodeOptions{
+			Signers:  []Cert{crt},
+			Detached: true,
+			NoCert:   true,
+		})
+		is.NotErr(err)
+		_, err = io.Copy(msg, bytes.NewReader(data))
+		is.NotErr(err)
+		is.NotErr(msg.Close())
+		is.NotZero(dest.Bytes())
+		if err := os.WriteFile("testdata/dest-nocert.sig", dest.Bytes(), 0666); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("verify", func(t *testing.T) {
+		msg, err := OpenToVerify(dest.Bytes())
+		is.NotErr(err)
+		_, err = bytes.NewReader(data).WriteTo(msg)
+		is.NotErr(err)
+		store, err := SystemStore("My")
+		is.NotErr(err)
+		is.NotZero(store)
+		numSigners, err := msg.GetSignerCount()
+		if err != nil {
+			t.Fatal(err)
+		}
+		is.NotZero(numSigners)
+		for i := range numSigners {
+			c, err := msg.GetSignerCert(i, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			subj, err := c.Info().SubjectStr()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%s", subj)
 			is.NotZero(len(c.Bytes()))
 			is.Lax().NotErr(msg.Verify(c))
 		}
