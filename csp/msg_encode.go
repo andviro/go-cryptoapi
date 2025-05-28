@@ -52,6 +52,7 @@ import "C"
 
 import (
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"io"
 	"unsafe"
@@ -112,15 +113,8 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 		streamInfo,                 // stream information
 	)
 	if res.hMsg == nil {
-		return nil, getErr("Error opening message for encoding")
+		return nil, errors.Join(getErr("Error opening message for encoding"), res.cleanup())
 	}
-	defer func() {
-		if rErr == nil {
-			return
-		} else if err := res.cleanup(); err != nil {
-			rErr = fmt.Errorf("Error closing msg: %v (original error: %v)", err, rErr)
-		}
-	}()
 	return res, nil
 }
 
@@ -133,22 +127,20 @@ func (msg *Msg) Write(buf []byte) (int, error) {
 }
 
 func (msg *Msg) cleanup() error {
+	var res error
 	for _, hProv := range msg.signerKeys {
 		if C.CryptReleaseContext(hProv, 0) == 0 {
-			return getErr("Error releasing context")
+			res = errors.Join(res, getErr("Error releasing signer key context"))
 		}
 	}
 	if C.CryptMsgClose(msg.hMsg) == 0 {
-		return getErr("Error closing message")
+		res = errors.Join(res, getErr("Error closing message"))
 	}
-	return nil
+	return res
 }
 
 // Close needs to be called to release internal message handle and flush
 // underlying encoded message.
 func (msg *Msg) Close() error {
-	if err := msg.flush(); err != nil {
-		return err
-	}
-	return msg.cleanup()
+	return errors.Join(msg.flush(), msg.cleanup())
 }
