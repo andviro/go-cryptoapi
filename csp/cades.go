@@ -84,7 +84,8 @@ static BOOL verify_detached(
         const BYTE* data, DWORD data_len,
         DWORD cades_type,
         BOOL do_revocation_check,
-        PCADES_VERIFICATION_INFO* out_info) {
+        PCADES_VERIFICATION_INFO* out_info,
+        DWORD* out_last_error) {
     CRYPT_VERIFY_MESSAGE_PARA verifyPara;
     CADES_VERIFICATION_PARA cadesPara;
     CADES_VERIFY_MESSAGE_PARA msgPara;
@@ -116,11 +117,18 @@ static BOOL verify_detached(
         PCCERT_CONTEXT pSignerCert = (*out_info)->pSignerCert;
         if (pSignerCert != NULL && check_revocation(pSignerCert)) {
             (*out_info)->dwStatus = ADES_VERIFY_END_CERT_REVOCATION;
-            SetLastError(CRYPT_E_REVOKED);
+            *out_last_error = CRYPT_E_REVOKED;
             return FALSE;
         }
     }
 
+    // Capture GetLastError in the same cgo crossing as the actual call.
+    // Without this, Go may reschedule the goroutine onto a different OS
+    // thread before getErr() runs, returning a stale (typically 0) value
+    // from the thread-local LastError of a different worker.
+    if (!ok) {
+        *out_last_error = GetLastError();
+    }
     return ok;
 }
 */
@@ -238,12 +246,14 @@ func VerifyDetached(data, sig []byte, opts ...VerifyOption) (*VerifyResult, erro
 	}
 
 	var info C.PCADES_VERIFICATION_INFO
+	var lastErr C.DWORD
 	ok := C.verify_detached(
 		(*C.BYTE)(cSig), C.DWORD(len(sig)),
 		(*C.BYTE)(cData), C.DWORD(len(data)),
 		C.DWORD(cfg.cadesType),
 		revFlag,
 		&info,
+		&lastErr,
 	)
 
 	res := &VerifyResult{}
@@ -258,7 +268,7 @@ func VerifyDetached(data, sig []byte, opts ...VerifyOption) (*VerifyResult, erro
 	}
 
 	if ok == 0 {
-		return res, getErr(verifyFailureMessage(res.Status))
+		return res, Error{Code: ErrorCode(lastErr), msg: verifyFailureMessage(res.Status)}
 	}
 	return res, nil
 }
