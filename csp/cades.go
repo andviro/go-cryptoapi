@@ -93,11 +93,12 @@ static BOOL check_revocation(PCCERT_CONTEXT pSignerCert, BOOL strict) {
 // on the Go side).
 //
 // On a successful Cades verification, this helper additionally invokes
-// check_revocation as a best-effort hybrid safety net (see fail-open
-// semantics on check_revocation). If the chain builder reports
-// CERT_TRUST_IS_REVOKED, we overwrite out_info->dwStatus to
-// ADES_VERIFY_END_CERT_REVOCATION and propagate CRYPT_E_REVOKED via
-// SetLastError + a FALSE return.
+// check_revocation as a hybrid safety net (see check_revocation for
+// fail-open vs strict semantics). When revocation triggers a rejection,
+// out_info->dwStatus is overwritten to ADES_VERIFY_END_CERT_REVOCATION,
+// CRYPT_E_REVOKED is written to *out_last_error (primary path read by Go),
+// SetLastError(CRYPT_E_REVOKED) is also called for debugger / strace
+// visibility, and the helper returns FALSE.
 static BOOL verify_detached(
         const BYTE* sig, DWORD sig_len,
         const BYTE* data, DWORD data_len,
@@ -138,6 +139,7 @@ static BOOL verify_detached(
         if (pSignerCert != NULL && check_revocation(pSignerCert, strict_revocation)) {
             (*out_info)->dwStatus = ADES_VERIFY_END_CERT_REVOCATION;
             *out_last_error = CRYPT_E_REVOKED;
+            SetLastError(CRYPT_E_REVOKED);
             return FALSE;
         }
     }
