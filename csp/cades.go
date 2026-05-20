@@ -73,6 +73,7 @@ static BOOL verify_detached(
         const BYTE* sig, DWORD sig_len,
         const BYTE* data, DWORD data_len,
         DWORD cades_type,
+        BOOL do_revocation_check,
         PCADES_VERIFICATION_INFO* out_info) {
     CRYPT_VERIFY_MESSAGE_PARA verifyPara;
     CADES_VERIFICATION_PARA cadesPara;
@@ -101,7 +102,7 @@ static BOOL verify_detached(
             (const BYTE**)data_arr, data_len_arr,
             out_info);
 
-    if (ok && *out_info != NULL && (*out_info)->dwStatus == ADES_VERIFY_SUCCESS) {
+    if (ok && do_revocation_check && *out_info != NULL && (*out_info)->dwStatus == ADES_VERIFY_SUCCESS) {
         PCCERT_CONTEXT pSignerCert = (*out_info)->pSignerCert;
         if (pSignerCert != NULL && check_revocation(pSignerCert)) {
             (*out_info)->dwStatus = ADES_VERIFY_END_CERT_REVOCATION;
@@ -142,16 +143,47 @@ const (
 	VerifyNoValidArchiveTime   VerifyStatus = 0x0E
 )
 
-// pkcs7Type selects plain CMS/PKCS#7 (no CAdES attributes) — value of
-// PKCS7_TYPE from <pki/cades.h>.
-const pkcs7Type = C.DWORD(0xFFFF)
+// CadesType selects the signature format expected by VerifyDetached.
+// Values mirror the CADES_* / PKCS7_TYPE defines from <pki/cades.h>.
+type CadesType uint32
+
+const (
+	CadesPKCS7      CadesType = 0xFFFF // plain CMS / PKCS#7 without CAdES attributes
+	CadesBES        CadesType = 0x0001
+	CadesT          CadesType = 0x0005
+	CadesXLongType1 CadesType = 0x005D
+	CadesA          CadesType = 0x00DD
+)
+
+// VerifyOption configures a VerifyDetached invocation.
+type VerifyOption func(*verifyConfig)
+
+type verifyConfig struct {
+	cadesType       CadesType
+	checkRevocation bool
+}
+
+// WithCadesType selects a CAdES signature format. Default is CadesPKCS7.
+func WithCadesType(t CadesType) VerifyOption {
+	return func(c *verifyConfig) { c.cadesType = t }
+}
+
+// WithoutRevocationCheck disables the hybrid revocation safety net — useful
+// for offline environments or as a performance shortcut when the caller
+// already knows the chain has been validated recently. Equivalent in spirit
+// to cryptcp's '-norev' flag.
+func WithoutRevocationCheck() VerifyOption {
+	return func(c *verifyConfig) { c.checkRevocation = false }
+}
 
 // VerifyResult carries the outcome of CadesVerifyDetachedMessage.
-// SignerCert and NotAfter help distinguish "untrusted root" from "expired cert"
-// when Status is non-Success. The caller owns SignerCert and must Close() it.
+// SignerCert and NotBefore/NotAfter help distinguish "untrusted root" from
+// "expired cert" when Status is non-Success. The caller owns SignerCert and
+// must Close() it.
 type VerifyResult struct {
 	Status     VerifyStatus
 	SignerCert Cert
+	NotBefore  time.Time
 	NotAfter   time.Time
 }
 
@@ -165,9 +197,17 @@ type VerifyResult struct {
 // is consulted. A confirmed revocation surfaces as Status=VerifyEndCertRevocation
 // + error code CRYPT_E_REVOKED (0x80092010). An offline / unreachable CRL is
 // treated as 'not revoked' (failsafe).
-func VerifyDetached(data, sig []byte) (*VerifyResult, error) {
+func VerifyDetached(data, sig []byte, opts ...VerifyOption) (*VerifyResult, error) {
 	if len(data) == 0 || len(sig) == 0 {
 		return nil, errors.New("VerifyDetached: empty data or signature")
+	}
+
+	cfg := verifyConfig{
+		cadesType:       CadesPKCS7,
+		checkRevocation: true,
+	}
+	for _, o := range opts {
+		o(&cfg)
 	}
 
 	// Copy buffers into C memory; the C helper handles all parameter wiring.
@@ -176,11 +216,17 @@ func VerifyDetached(data, sig []byte) (*VerifyResult, error) {
 	cSig := C.CBytes(sig)
 	defer C.free(cSig)
 
+	revFlag := C.BOOL(1)
+	if !cfg.checkRevocation {
+		revFlag = C.BOOL(0)
+	}
+
 	var info C.PCADES_VERIFICATION_INFO
 	ok := C.verify_detached(
 		(*C.BYTE)(cSig), C.DWORD(len(sig)),
 		(*C.BYTE)(cData), C.DWORD(len(data)),
-		pkcs7Type,
+		C.DWORD(cfg.cadesType),
+		revFlag,
 		&info,
 	)
 
@@ -190,6 +236,7 @@ func VerifyDetached(data, sig []byte) (*VerifyResult, error) {
 		res.Status = VerifyStatus(info.dwStatus)
 		if info.pSignerCert != nil {
 			res.SignerCert = Cert{pCert: C.CertDuplicateCertificateContext(info.pSignerCert)}
+			res.NotBefore = fileTimeToTime(info.pSignerCert.pCertInfo.NotBefore)
 			res.NotAfter = fileTimeToTime(info.pSignerCert.pCertInfo.NotAfter)
 		}
 	}

@@ -98,6 +98,26 @@ func (c Cert) Bytes() []byte {
 	return C.GoBytes(unsafe.Pointer(c.pCert.pbCertEncoded), C.int(c.pCert.cbCertEncoded))
 }
 
+// Serial returns the certificate's serial number as a big-endian hex string.
+// CryptoAPI stores SerialNumber as little-endian in CRYPT_INTEGER_BLOB; we
+// reverse it for the conventional big-endian display order.
+func (c Cert) Serial() string {
+	if c.pCert == nil || c.pCert.pCertInfo == nil {
+		return ""
+	}
+	blob := c.pCert.pCertInfo.SerialNumber
+	n := int(blob.cbData)
+	if n == 0 || blob.pbData == nil {
+		return ""
+	}
+	raw := C.GoBytes(unsafe.Pointer(blob.pbData), C.int(n))
+	rev := make([]byte, n)
+	for i, b := range raw {
+		rev[n-1-i] = b
+	}
+	return hex.EncodeToString(rev)
+}
+
 // Context returns cryptographic context associated with the certificate
 func (c Cert) Context() (Ctx, error) {
 	var provInfo *C.CRYPT_KEY_PROV_INFO
