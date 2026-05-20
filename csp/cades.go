@@ -258,9 +258,44 @@ func VerifyDetached(data, sig []byte, opts ...VerifyOption) (*VerifyResult, erro
 	}
 
 	if ok == 0 {
-		return res, getErr("CadesVerifyDetachedMessage failed")
+		return res, getErr(verifyFailureMessage(res.Status))
 	}
 	return res, nil
+}
+
+// verifyFailureMessage returns a short human-readable description of why
+// VerifyDetached failed, based on the CADES_VERIFICATION_INFO.dwStatus
+// reported by libcades (or overridden by the hybrid revocation safety net).
+// The accompanying Error.Code carries the underlying WinCrypt HRESULT.
+func verifyFailureMessage(s VerifyStatus) string {
+	switch s {
+	case VerifySuccess:
+		// Reached when CadesVerifyDetachedMessage returned FALSE but didn't
+		// populate dwStatus — should be rare. Keep generic.
+		return "CadesVerifyDetachedMessage failed"
+	case VerifySignerNotFound:
+		return "signer certificate not found"
+	case VerifyNoChain:
+		return "could not build certificate chain to a trusted root"
+	case VerifyEndCertRevocation:
+		return "signer certificate revoked"
+	case VerifyChainCertRevocation:
+		return "chain certificate revoked"
+	case VerifyBadSignature:
+		return "signature does not match content"
+	case VerifyBadPolicy, VerifyFailedPolicy:
+		return "certificate policy check failed"
+	case VerifyUnsupportedAttribute:
+		return "unsupported signature attribute"
+	case VerifyEcontentTypeNoMatch:
+		return "eContentType mismatch"
+	case VerifyNoValidSigTimestamp, VerifyNoValidCadesCTime, VerifyNoValidArchiveTime:
+		return "timestamp validation failed"
+	case VerifyInvalidRefsAndValues, VerifyRefsAndValuesNoMatch:
+		return "CAdES references/values mismatch"
+	default:
+		return "CAdES verification failed"
+	}
 }
 
 // revocationCheckCount returns the cumulative number of times the hybrid
