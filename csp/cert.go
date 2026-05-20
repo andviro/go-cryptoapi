@@ -33,6 +33,9 @@ func ParseCert(buf []byte) (res Cert, err error) {
 
 // Close releases certificate context
 func (c Cert) Close() error {
+	if c.pCert == nil {
+		return nil
+	}
 	if C.CertFreeCertificateContext(c.pCert) == 0 {
 		return getErr("Error releasing certificate context")
 	}

@@ -65,6 +65,30 @@ func TestVerifyDetached_WithoutRevocationCheck(t *testing.T) {
 	}
 }
 
+// TestVerifyDetached_StrictRevocation_HappyPath validates that
+// WithStrictRevocation does not regress the happy path when CRLs are
+// reachable. Confirming fail-closed behaviour on actually-unknown
+// revocation status requires an offline fixture and is out of scope here.
+func TestVerifyDetached_StrictRevocation_HappyPath(t *testing.T) {
+	data, err := os.ReadFile("testdata/good.xml")
+	if err != nil {
+		t.Fatalf("read good.xml: %v", err)
+	}
+	sig, err := os.ReadFile("testdata/good.xml.sig")
+	if err != nil {
+		t.Fatalf("read good.xml.sig: %v", err)
+	}
+
+	res, err := VerifyDetached(data, sig, WithStrictRevocation())
+	if res != nil && !res.SignerCert.IsZero() {
+		defer res.SignerCert.Close()
+	}
+	if err != nil || res.Status != VerifySuccess {
+		t.Fatalf("expected success in strict mode (CRL reachable): err=%v status=%v",
+			err, res.Status)
+	}
+}
+
 func TestVerifyDetached(t *testing.T) {
 	cases := []struct {
 		name       string
