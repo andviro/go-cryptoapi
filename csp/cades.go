@@ -1,3 +1,5 @@
+//go:build linux && amd64
+
 package csp
 
 /*
@@ -22,19 +24,28 @@ package csp
 
 // g_revocation_check_count is a monotonic counter incremented on every
 // check_revocation call. Test-only — exposed to Go via get_revocation_check_count.
+// Updated with __atomic_fetch_add to remain race-free under concurrent verify.
 static volatile long g_revocation_check_count = 0;
-static long get_revocation_check_count(void) { return g_revocation_check_count; }
+static long get_revocation_check_count(void) {
+    return __atomic_load_n(&g_revocation_check_count, __ATOMIC_RELAXED);
+}
 
-// check_revocation does an extra explicit CRL pass via CertGetCertificateChain.
-// Returns TRUE iff the chain builder confirmed the signer (or an intermediate)
-// is revoked. Network-offline / CRL-missing maps to FALSE (failsafe — better
-// miss a revocation than reject everything under a CRL service blip).
+// check_revocation runs a best-effort revocation pass via CertGetCertificateChain
+// with CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT. Returns TRUE iff the
+// chain builder confirmed the signer (or an intermediate) is revoked
+// (TrustStatus.dwErrorStatus & CERT_TRUST_IS_REVOKED).
+//
+// This is *fail-open*: a CertGetCertificateChain failure, a CRL fetch timeout,
+// an offline CDP, or a CERT_TRUST_REVOCATION_STATUS_UNKNOWN flag all map to
+// FALSE (not-revoked). The rationale is availability — better miss a
+// revocation than reject every signature during a CRL service blip — but
+// callers needing strict-fail semantics should wrap with their own check.
 static BOOL check_revocation(PCCERT_CONTEXT pSignerCert) {
     CERT_CHAIN_PARA chainPara;
     PCCERT_CHAIN_CONTEXT chainContext = NULL;
     BOOL revoked = FALSE;
 
-    g_revocation_check_count++;
+    __atomic_fetch_add(&g_revocation_check_count, 1, __ATOMIC_RELAXED);
 
     memset(&chainPara, 0, sizeof(chainPara));
     chainPara.cbSize = sizeof(chainPara);
@@ -63,12 +74,11 @@ static BOOL check_revocation(PCCERT_CONTEXT pSignerCert) {
 // on the Go side).
 //
 // On a successful Cades verification, this helper additionally invokes
-// check_revocation as a hybrid safety net: until it is empirically confirmed
-// that libpkivalidator under PKCS7_TYPE does CRL checks by default, we run
-// the second explicit pass with CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT.
-// If the chain builder reports CERT_TRUST_IS_REVOKED, we overwrite the
-// out_info->dwStatus to ADES_VERIFY_END_CERT_REVOCATION and propagate
-// CRYPT_E_REVOKED via SetLastError + a FALSE return.
+// check_revocation as a best-effort hybrid safety net (see fail-open
+// semantics on check_revocation). If the chain builder reports
+// CERT_TRUST_IS_REVOKED, we overwrite out_info->dwStatus to
+// ADES_VERIFY_END_CERT_REVOCATION and propagate CRYPT_E_REVOKED via
+// SetLastError + a FALSE return.
 static BOOL verify_detached(
         const BYTE* sig, DWORD sig_len,
         const BYTE* data, DWORD data_len,
@@ -118,6 +128,7 @@ import "C"
 
 import (
 	"errors"
+	"math"
 	"time"
 )
 
@@ -200,6 +211,11 @@ type VerifyResult struct {
 func VerifyDetached(data, sig []byte, opts ...VerifyOption) (*VerifyResult, error) {
 	if len(data) == 0 || len(sig) == 0 {
 		return nil, errors.New("VerifyDetached: empty data or signature")
+	}
+	// CadesVerifyDetachedMessage takes DWORD (uint32) lengths; reject inputs
+	// that would silently truncate on 64-bit Go.
+	if uint64(len(data)) > math.MaxUint32 || uint64(len(sig)) > math.MaxUint32 {
+		return nil, errors.New("VerifyDetached: input exceeds 4 GiB")
 	}
 
 	cfg := verifyConfig{

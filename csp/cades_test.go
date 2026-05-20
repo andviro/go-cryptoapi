@@ -1,3 +1,5 @@
+//go:build linux && amd64
+
 package csp
 
 import (
@@ -25,6 +27,9 @@ func TestVerifyDetached_RevocationCheckRuns(t *testing.T) {
 	res, err := VerifyDetached(data, sig)
 	after := revocationCheckCount()
 
+	if res != nil && !res.SignerCert.IsZero() {
+		defer res.SignerCert.Close()
+	}
 	if err != nil || res.Status != VerifySuccess {
 		t.Fatalf("good fixture should verify: status=%v err=%v", res.Status, err)
 	}
@@ -48,6 +53,9 @@ func TestVerifyDetached_WithoutRevocationCheck(t *testing.T) {
 	res, err := VerifyDetached(data, sig, WithoutRevocationCheck())
 	after := revocationCheckCount()
 
+	if res != nil && !res.SignerCert.IsZero() {
+		defer res.SignerCert.Close()
+	}
 	if err != nil || res.Status != VerifySuccess {
 		t.Fatalf("expected success: status=%v err=%v", res.Status, err)
 	}
@@ -128,6 +136,9 @@ func TestVerifyDetached(t *testing.T) {
 			res, err := VerifyDetached(data, sig, tc.opts...)
 			if res == nil {
 				t.Fatalf("res nil (err=%v)", err)
+			}
+			if !res.SignerCert.IsZero() {
+				defer res.SignerCert.Close()
 			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v, wantErr=%v (res=%+v)", err, tc.wantErr, res)
