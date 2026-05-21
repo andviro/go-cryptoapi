@@ -13,15 +13,23 @@ import (
 // a chain element's NotAfter is in the past.
 const certEExpired ErrorCode = 0x800B0101
 
+// loadFixture reads a testdata file and skips the test/benchmark if it is
+// missing. See csp/testdata/README.md for how to provision fixtures locally.
+func loadFixture(tb testing.TB, name string) []byte {
+	tb.Helper()
+	data, err := os.ReadFile(name)
+	if err != nil {
+		if os.IsNotExist(err) {
+			tb.Skipf("fixture missing: %s (see csp/testdata/README.md)", name)
+		}
+		tb.Fatalf("read %s: %v", name, err)
+	}
+	return data
+}
+
 func TestVerifyDetached_RevocationCheckRuns(t *testing.T) {
-	data, err := os.ReadFile("testdata/good.xml")
-	if err != nil {
-		t.Fatalf("read good.xml: %v", err)
-	}
-	sig, err := os.ReadFile("testdata/good.xml.sig")
-	if err != nil {
-		t.Fatalf("read good.xml.sig: %v", err)
-	}
+	data := loadFixture(t, "testdata/good.xml")
+	sig := loadFixture(t, "testdata/good.xml.sig")
 
 	before := revocationCheckCount()
 	res, err := VerifyDetached(data, sig)
@@ -40,14 +48,8 @@ func TestVerifyDetached_RevocationCheckRuns(t *testing.T) {
 }
 
 func TestVerifyDetached_WithoutRevocationCheck(t *testing.T) {
-	data, err := os.ReadFile("testdata/good.xml")
-	if err != nil {
-		t.Fatalf("read good.xml: %v", err)
-	}
-	sig, err := os.ReadFile("testdata/good.xml.sig")
-	if err != nil {
-		t.Fatalf("read good.xml.sig: %v", err)
-	}
+	data := loadFixture(t, "testdata/good.xml")
+	sig := loadFixture(t, "testdata/good.xml.sig")
 
 	before := revocationCheckCount()
 	res, err := VerifyDetached(data, sig, WithoutRevocationCheck())
@@ -70,14 +72,8 @@ func TestVerifyDetached_WithoutRevocationCheck(t *testing.T) {
 // reachable. Confirming fail-closed behaviour on actually-unknown
 // revocation status requires an offline fixture and is out of scope here.
 func TestVerifyDetached_StrictRevocation_HappyPath(t *testing.T) {
-	data, err := os.ReadFile("testdata/good.xml")
-	if err != nil {
-		t.Fatalf("read good.xml: %v", err)
-	}
-	sig, err := os.ReadFile("testdata/good.xml.sig")
-	if err != nil {
-		t.Fatalf("read good.xml.sig: %v", err)
-	}
+	data := loadFixture(t, "testdata/good.xml")
+	sig := loadFixture(t, "testdata/good.xml.sig")
 
 	res, err := VerifyDetached(data, sig, WithStrictRevocation())
 	if res != nil && !res.SignerCert.IsZero() {
@@ -148,14 +144,8 @@ func TestVerifyDetached(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := os.ReadFile(tc.data)
-			if err != nil {
-				t.Fatalf("read %s: %v", tc.data, err)
-			}
-			sig, err := os.ReadFile(tc.sig)
-			if err != nil {
-				t.Fatalf("read %s: %v", tc.sig, err)
-			}
+			data := loadFixture(t, tc.data)
+			sig := loadFixture(t, tc.sig)
 
 			res, err := VerifyDetached(data, sig, tc.opts...)
 			if res == nil {

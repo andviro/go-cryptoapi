@@ -3,24 +3,14 @@
 package csp
 
 import (
-	"os"
 	"testing"
 )
 
 // loadBenchFixture loads the good.xml + good.xml.sig pair once per benchmark.
-// On any failure we b.Fatal so the rest of the run is skipped.
+// Skips the benchmark if either fixture is missing (see csp/testdata/README.md).
 func loadBenchFixture(b *testing.B) (data, sig []byte) {
 	b.Helper()
-	var err error
-	data, err = os.ReadFile("testdata/good.xml")
-	if err != nil {
-		b.Fatalf("read good.xml: %v", err)
-	}
-	sig, err = os.ReadFile("testdata/good.xml.sig")
-	if err != nil {
-		b.Fatalf("read good.xml.sig: %v", err)
-	}
-	return
+	return loadFixture(b, "testdata/good.xml"), loadFixture(b, "testdata/good.xml.sig")
 }
 
 // warmRevocationCache does one sequential verify so the first parallel

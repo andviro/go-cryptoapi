@@ -158,9 +158,49 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"time"
 )
+
+// init checks that the Go constants in this file still match the numeric
+// values defined by the linked libcades / CryptoPro headers. If a future
+// CSP release renumbers ADES_VERIFY_* or CADES_* defines, this panics on
+// package import rather than letting a silent semantic mismatch reach
+// production.
+func init() {
+	check := func(name string, want VerifyStatus, got C.uint) {
+		if uint32(want) != uint32(got) {
+			panic(fmt.Sprintf("csp: %s drift — Go=%#x C=%#x", name, uint32(want), uint32(got)))
+		}
+	}
+	check("VerifySuccess", VerifySuccess, C.ADES_VERIFY_SUCCESS)
+	check("VerifyInvalidRefsAndValues", VerifyInvalidRefsAndValues, C.ADES_VERIFY_INVALID_REFS_AND_VALUES)
+	check("VerifySignerNotFound", VerifySignerNotFound, C.ADES_VERIFY_SIGNER_NOT_FOUND)
+	check("VerifyNoValidSigTimestamp", VerifyNoValidSigTimestamp, C.ADES_VERIFY_NO_VALID_SIGNATURE_TIMESTAMP)
+	check("VerifyRefsAndValuesNoMatch", VerifyRefsAndValuesNoMatch, C.ADES_VERIFY_REFS_AND_VALUES_NO_MATCH)
+	check("VerifyNoChain", VerifyNoChain, C.ADES_VERIFY_NO_CHAIN)
+	check("VerifyEndCertRevocation", VerifyEndCertRevocation, C.ADES_VERIFY_END_CERT_REVOCATION)
+	check("VerifyChainCertRevocation", VerifyChainCertRevocation, C.ADES_VERIFY_CHAIN_CERT_REVOCATION)
+	check("VerifyBadSignature", VerifyBadSignature, C.ADES_VERIFY_BAD_SIGNATURE)
+	check("VerifyNoValidCadesCTime", VerifyNoValidCadesCTime, C.ADES_VERIFY_NO_VALID_CADES_C_TIMESTAMP)
+	check("VerifyBadPolicy", VerifyBadPolicy, C.ADES_VERIFY_BAD_POLICY)
+	check("VerifyUnsupportedAttribute", VerifyUnsupportedAttribute, C.ADES_VERIFY_UNSUPPORTED_ATTRIBUTE)
+	check("VerifyFailedPolicy", VerifyFailedPolicy, C.ADES_VERIFY_FAILED_POLICY)
+	check("VerifyEcontentTypeNoMatch", VerifyEcontentTypeNoMatch, C.ADES_VERIFY_ECONTENTTYPE_NO_MATCH)
+	check("VerifyNoValidArchiveTime", VerifyNoValidArchiveTime, C.ADES_VERIFY_NO_VALID_ARCHIVE_TIMESTAMP)
+
+	checkCades := func(name string, want CadesType, got C.uint) {
+		if uint32(want) != uint32(got) {
+			panic(fmt.Sprintf("csp: %s drift — Go=%#x C=%#x", name, uint32(want), uint32(got)))
+		}
+	}
+	checkCades("CadesPKCS7", CadesPKCS7, C.PKCS7_TYPE)
+	checkCades("CadesBES", CadesBES, C.CADES_BES)
+	checkCades("CadesT", CadesT, C.CADES_T)
+	checkCades("CadesXLongType1", CadesXLongType1, C.CADES_X_LONG_TYPE_1)
+	checkCades("CadesA", CadesA, C.CADES_A)
+}
 
 // VerifyStatus enumerates result codes returned by CryptoPro CAdES verification.
 // Values correspond to ADES_VERIFY_* defines in <pki/ades-core.h>.
