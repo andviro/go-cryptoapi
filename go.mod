@@ -1,4 +1,4 @@
-module github.com/andviro/go-cryptoapi/v2
+module github.com/VerTox/go-cryptoapi/v2
 
 go 1.21
 

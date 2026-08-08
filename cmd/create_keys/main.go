@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/andviro/go-cryptoapi/v2/csp"
+	"github.com/VerTox/go-cryptoapi/v2/csp"
 )
 
 func init() {
