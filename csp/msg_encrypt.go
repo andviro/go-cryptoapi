@@ -60,11 +60,7 @@ type EncryptOptions struct {
 // OpenToEncrypt creates new Msg in encrypt mode.
 func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	if len(options.Receivers) == 0 {
-		return nil, errors.New("Receivers certificates list is empty")
-	}
-	ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
-	if err != nil {
-		return nil, err
+		return nil, errors.New("receivers certificates list is empty")
 	}
 	res := new(Msg)
 	res.callbackID = registerCallback(res.onWrite)
@@ -77,7 +73,7 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	} else {
 		encryptOID = C.CString(string(EncryptOIDGost28147))
 	}
-	envelopedInfo := C.mkEnvelopedInfo(ctx.hProv, C.int(len(options.Receivers)), encryptOID)
+	envelopedInfo := C.mkEnvelopedInfo(0, C.int(len(options.Receivers)), encryptOID)
 	defer C.freeEnvelopedInfo(envelopedInfo)
 
 	for i, receiverCert := range options.Receivers {
