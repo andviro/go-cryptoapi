@@ -6,6 +6,7 @@ package csp
 extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 */
 import "C"
+
 import (
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ func OpenToDecode(dest io.Writer) (msg *Msg, rErr error) {
 		si,            // stream info
 	)
 	if res.hMsg == nil {
+		unregisterCallback(res.callbackID)
 		return nil, getErr("Error opening message for decoding")
 	}
 	res.w = dest

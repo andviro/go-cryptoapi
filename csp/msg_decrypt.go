@@ -57,7 +57,7 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 		return len(buf), msg.lastError
 	}
 	var cbData C.DWORD
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_ENVELOPE_ALGORITHM_PARAM, 0, nil, &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_ENVELOPE_ALGORITHM_PARAM, 0, nil, &cbData) == 0 {
 		switch ErrorCode(C.GetLastError()) {
 		case ErrStreamNotReady:
 			return len(buf), msg.lastError
@@ -67,7 +67,7 @@ func (msg *Decryptor) Write(buf []byte) (int, error) {
 	}
 	cbData = C.DWORD(C.sizeof_DWORD)
 	var numRecipients C.DWORD
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_COUNT_PARAM, 0, unsafe.Pointer(&numRecipients), &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_COUNT_PARAM, 0, unsafe.Pointer(&numRecipients), &cbData) == 0 {
 		return 0, getErr("Error acquiring message recipient count")
 	}
 	for i := 0; i < int(numRecipients); i++ {
@@ -92,8 +92,8 @@ func (msg *Decryptor) proceed(i int, n int, ctx Ctx) (int, error) {
 	decrPara.hCryptProv = ctx.hProv
 	decrPara.dwKeySpec = C.AT_KEYEXCHANGE
 	decrPara.dwRecipientIndex = C.DWORD(i)
-	if 0 == C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_DECRYPT, unsafe.Pointer(&decrPara)) {
-		if C.GetLastError() != 0 {
+	if C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_DECRYPT, unsafe.Pointer(&decrPara)) == 0 {
+		if n := C.GetLastError(); n != 0 {
 			return 0, getErr("Error setting decrypt parameter")
 		}
 	}
@@ -102,15 +102,14 @@ func (msg *Decryptor) proceed(i int, n int, ctx Ctx) (int, error) {
 
 func (msg *Decryptor) getRecipientCert(i int, store CertStore) (*Cert, error) {
 	var cbData C.DWORD
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_INFO_PARAM, C.DWORD(i), nil, &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_INFO_PARAM, C.DWORD(i), nil, &cbData) == 0 {
 		return nil, getErr("Error acquiring message recipient info length")
 	}
 	recipientInfo := C.malloc(C.size_t(cbData))
 	defer C.free(recipientInfo)
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_INFO_PARAM, C.DWORD(i), recipientInfo, &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_RECIPIENT_INFO_PARAM, C.DWORD(i), recipientInfo, &cbData) == 0 {
 		return nil, getErr("Error acquiring message recipient info")
 	}
-
 	if pCert := C.CertGetSubjectCertificateFromStore(store.hStore, C.MY_ENC_TYPE, C.PCERT_INFO(recipientInfo)); pCert != nil {
 		return &Cert{pCert: pCert}, nil
 	}

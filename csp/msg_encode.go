@@ -133,9 +133,10 @@ func (msg *Msg) cleanup() error {
 			res = errors.Join(res, getErr("Error releasing signer key context"))
 		}
 	}
-	if C.CryptMsgClose(msg.hMsg) == 0 {
+	if msg.hMsg != nil && C.CryptMsgClose(msg.hMsg) == 0 {
 		res = errors.Join(res, getErr("Error closing message"))
 	}
+	unregisterCallback(msg.callbackID)
 	return res
 }
 

@@ -27,6 +27,13 @@ func registerCallback(cb cb) int64 {
 	return idx
 }
 
+// unregisterCallback removes Msg callback from global callback map
+func unregisterCallback(id int64) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(callbacks, id)
+}
+
 //export msgStreamCallback
 func msgStreamCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
 	idx := (*int64)(pvArg)

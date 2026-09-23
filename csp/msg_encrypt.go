@@ -38,7 +38,7 @@ static void setRecipientInfo(CMSG_ENVELOPED_ENCODE_INFO *out, int nSigner, PCCER
 import "C"
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"unsafe"
 )
@@ -60,7 +60,7 @@ type EncryptOptions struct {
 // OpenToEncrypt creates new Msg in encrypt mode.
 func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	if len(options.Receivers) == 0 {
-		return nil, fmt.Errorf("Receivers certificates list is empty")
+		return nil, errors.New("Receivers certificates list is empty")
 	}
 	ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
 	if err != nil {
@@ -85,12 +85,12 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	}
 	res.w = dest
 	res.hMsg = C.CryptMsgOpenToEncode(
-		C.MY_ENC_TYPE,                 // encoding type
-		0,                             // flags
-		C.CMSG_ENVELOPED,              // message type
-		unsafe.Pointer(envelopedInfo), // pointer to structure
-		nil,                           // inner content OID
-		si,                            // stream information
+		C.MY_ENC_TYPE,                     // encoding type
+		C.CMSG_CRYPT_RELEASE_CONTEXT_FLAG, // flags
+		C.CMSG_ENVELOPED,                  // message type
+		unsafe.Pointer(envelopedInfo),     // pointer to structure
+		nil,                               // inner content OID
+		si,                                // stream information
 	)
 	if res.hMsg == nil {
 		return nil, getErr("Error opening message for encrypt")

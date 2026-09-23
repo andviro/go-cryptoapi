@@ -88,7 +88,7 @@ func (msg *Msg) Verify(c Cert) error {
 func (msg *Msg) GetSignerCount() (int, error) {
 	var res C.DWORD
 	var cbData C.DWORD = 4
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_COUNT_PARAM, 0, unsafe.Pointer(&res), &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_COUNT_PARAM, 0, unsafe.Pointer(&res), &cbData) == 0 {
 		return 0, getErr("Error acquiring message signer count")
 	}
 	return int(res), nil
@@ -98,12 +98,12 @@ func (msg *Msg) GetSignerCount() (int, error) {
 // certificate store (usually acquired by msg.CertStore() method).
 func (msg *Msg) GetSignerCert(i int, store CertStore) (Cert, error) {
 	var cbData C.DWORD
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), nil, &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), nil, &cbData) == 0 {
 		return Cert{}, getErrf("Error acquiring message %d-th signer info length", i)
 	}
 	signerInfo := C.malloc(C.size_t(cbData))
 	defer C.free(signerInfo)
-	if 0 == C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), signerInfo, &cbData) {
+	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), signerInfo, &cbData) == 0 {
 		return Cert{}, getErrf("Error acquiring message %d-th signer info", i)
 	}
 
