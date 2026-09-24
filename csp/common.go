@@ -17,6 +17,7 @@ import "C"
 
 import (
 	"fmt"
+	"runtime"
 	"unsafe"
 )
 
@@ -69,14 +70,24 @@ func freePtr(s *C.CHAR) {
 	}
 }
 
-func getErr(msg string) error {
-	return Error{msg: msg, Code: ErrorCode(C.GetLastError())}
-}
-
-func getErrf(tpl string, values ...interface{}) error {
-	return Error{msg: fmt.Sprintf(tpl, values...), Code: ErrorCode(C.GetLastError())}
-}
-
 func extractBlob(pb *C.DATA_BLOB) []byte {
 	return C.GoBytes(unsafe.Pointer(pb.pbData), C.int(pb.cbData))
+}
+
+func expectError(f func() bool, msg string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if !f() {
+		return Error{msg: msg, Code: ErrorCode(C.GetLastError())}
+	}
+	return nil
+}
+
+func expectErrorf(f func() bool, tpl string, values ...any) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if !f() {
+		return Error{msg: fmt.Sprintf(tpl, values...), Code: ErrorCode(C.GetLastError())}
+	}
+	return nil
 }

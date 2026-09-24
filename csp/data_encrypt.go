@@ -47,6 +47,7 @@ static CRYPT_DECRYPT_MESSAGE_PARA *mkDecryptMessagePara(HCERTSTORE *store) {
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -55,16 +56,14 @@ import (
 // certificates
 func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
 	if len(options.Receivers) == 0 {
-		return nil, fmt.Errorf("Receivers certificates list is empty")
+		return nil, fmt.Errorf("receivers certificates list is empty")
 	}
 	ctx, err := AcquireCtx("", "", ProvGost2012_512, CryptVerifyContext)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		if err := ctx.Close(); err != nil {
-			rErr = fmt.Errorf("Encrypting data: %v (original error: %v)", err, rErr)
-		}
+		rErr = errors.Join(rErr, ctx.Close())
 	}()
 	var encryptOID C.LPSTR
 	if options.EncryptOID != "" {
@@ -80,14 +79,15 @@ func EncryptData(data []byte, options EncryptOptions) (_ []byte, rErr error) {
 	}
 	var slen C.DWORD
 	var res []byte
-	if C.CryptEncryptMessage(&edp.params, C.DWORD(edp.cRecipients), edp.rgRecipientCerts, (*C.BYTE)(&data[0]), C.DWORD(len(data)), nil, &slen) == 0 {
-		return res, getErr("Error getting encrypted data size")
+	if err := expectError(func() bool {
+		return C.CryptEncryptMessage(&edp.params, C.DWORD(edp.cRecipients), edp.rgRecipientCerts, (*C.BYTE)(&data[0]), C.DWORD(len(data)), nil, &slen) != 0
+	}, "getting encrypted data size"); err != nil {
+		return res, err
 	}
 	res = make([]byte, slen)
-	if C.CryptEncryptMessage(&edp.params, C.DWORD(edp.cRecipients), edp.rgRecipientCerts, (*C.BYTE)(&data[0]), C.DWORD(len(data)), (*C.BYTE)(&res[0]), &slen) == 0 {
-		return nil, getErr("Error getting encrypted data body")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		return C.CryptEncryptMessage(&edp.params, C.DWORD(edp.cRecipients), edp.rgRecipientCerts, (*C.BYTE)(&data[0]), C.DWORD(len(data)), (*C.BYTE)(&res[0]), &slen) != 0
+	}, "getting encrypted data body")
 }
 
 // DecryptData decrypts byte slice using provided certificate store for private
@@ -96,14 +96,15 @@ func DecryptData(data []byte, store CertStore) ([]byte, error) {
 	pdp := C.mkDecryptMessagePara(&store.hStore)
 	defer C.free(unsafe.Pointer(pdp))
 	var slen C.DWORD
-	if C.CryptDecryptMessage(pdp, (*C.BYTE)(&data[0]), C.DWORD(len(data)), nil, &slen, nil) == 0 {
-		return nil, getErr("Error getting decrypted data size")
+	if err := expectError(func() bool {
+		return C.CryptDecryptMessage(pdp, (*C.BYTE)(&data[0]), C.DWORD(len(data)), nil, &slen, nil) != 0
+	}, "getting decrypted data size"); err != nil {
+		return nil, err
 	}
 	res := make([]byte, int(slen))
-	if C.CryptDecryptMessage(pdp, (*C.BYTE)(&data[0]), C.DWORD(len(data)), (*C.BYTE)(&res[0]), &slen, nil) == 0 {
-		return nil, getErr("Error getting decrypted data body")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		return C.CryptDecryptMessage(pdp, (*C.BYTE)(&data[0]), C.DWORD(len(data)), (*C.BYTE)(&res[0]), &slen, nil) != 0
+	}, "getting decrypted data body")
 }
 
 type BlockEncryptedData struct {

@@ -37,21 +37,18 @@ func (c Cert) IsZero() bool {
 func ParseCert(buf []byte) (res Cert, err error) {
 	bufBytes := C.CBytes(buf)
 	defer C.free(bufBytes)
-
-	res.pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(bufBytes), C.DWORD(len(buf)))
-	if res.pCert == nil {
-		err = getErr("Error creating certficate context")
-		return
-	}
-	return
+	err = expectError(func() bool {
+		res.pCert = C.CertCreateCertificateContext(C.MY_ENC_TYPE, (*C.BYTE)(bufBytes), C.DWORD(len(buf)))
+		return res.pCert != nil
+	}, "creating certficate context")
+	return res, err
 }
 
 // Close releases certificate context
 func (c Cert) Close() error {
-	if C.CertFreeCertificateContext(c.pCert) == 0 {
-		return getErr("Error releasing certificate context")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CertFreeCertificateContext(c.pCert) != 0
+	}, "releasing certificate context")
 }
 
 // CertPropertyID corresponds to a C type of DWORD
@@ -67,15 +64,16 @@ const (
 // GetProperty is a base function for extracting certificate context properties
 func (c Cert) GetProperty(propID CertPropertyID) ([]byte, error) {
 	var slen C.DWORD
-	var res []byte
-	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), nil, &slen) == 0 {
-		return res, getErr("Error getting cert context property size")
+	if err := expectError(func() bool {
+		return C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), nil, &slen) != 0
+	}, "getting cert context property size"); err != nil {
+		return nil, err
 	}
-	res = make([]byte, slen)
-	if C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), unsafe.Pointer(&res[0]), &slen) == 0 {
-		return res, getErr("Error getting cert context property body")
-	}
-	return res, nil
+	res := make([]byte, slen)
+	err := expectError(func() bool {
+		return C.CertGetCertificateContextProperty(c.pCert, C.DWORD(propID), unsafe.Pointer(&res[0]), &slen) != 0
+	}, "getting cert context property body")
+	return res, err
 }
 
 // ThumbPrint returns certificate's hash as a hexadecimal string
@@ -118,18 +116,21 @@ func (c Cert) Context() (Ctx, error) {
 	var provInfo *C.CRYPT_KEY_PROV_INFO
 	var res Ctx
 	var cbData C.DWORD
-	if C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, nil, &cbData) == 0 {
-		return res, getErr("Error getting certificate context property length")
+	if err := expectError(func() bool {
+		return C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, nil, &cbData) != 0
+	}, "getting certificate context property length"); err != nil {
+		return res, err
 	}
 	provInfo = (*C.CRYPT_KEY_PROV_INFO)(C.malloc(C.size_t(cbData)))
 	defer C.free(unsafe.Pointer(provInfo))
-	if C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) == 0 {
-		return res, getErr("Error getting certificate context property")
+	if err := expectError(func() bool {
+		return C.CertGetCertificateContextProperty(c.pCert, C.CERT_KEY_PROV_INFO_PROP_ID, unsafe.Pointer(provInfo), &cbData) != 0
+	}, "getting certificate context property"); err != nil {
+		return res, err
 	}
-	if C.CryptAcquireContextW(&res.hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) == 0 {
-		return res, getErr("Error acquiring context")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		return C.CryptAcquireContextW(&res.hProv, provInfo.pwszContainerName, provInfo.pwszProvName, provInfo.dwProvType, provInfo.dwFlags) != 0
+	}, "acquiring context")
 }
 
 type CertChain struct {
@@ -217,8 +218,7 @@ func (cgco CertGetChainOptions) ToFlags() C.DWORD {
 func (c Cert) GetChain(opts CertGetChainOptions) (res CertChain, _ error) {
 	pccp := C.mkCertChainPara()
 	defer C.free(unsafe.Pointer(pccp))
-	if C.CertGetCertificateChain(nil, c.pCert, nil, nil, pccp, opts.ToFlags(), nil, &res.pCertChain) == 0 {
-		return res, getErr("Error getting certificate chain")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		return C.CertGetCertificateChain(nil, c.pCert, nil, nil, pccp, opts.ToFlags(), nil, &res.pCertChain) != 0
+	}, "getting certificate chain")
 }

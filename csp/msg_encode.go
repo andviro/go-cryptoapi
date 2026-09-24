@@ -98,43 +98,50 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 			hCryptProv C.HCRYPTPROV_OR_NCRYPT_KEY_HANDLE
 			dwKeySpec  C.DWORD
 		)
-		if C.CryptAcquireCertificatePrivateKey(signerCert.pCert, 0, nil, &hCryptProv, &dwKeySpec, nil) == 0 {
-			return nil, getErr("Error acquiring certificate private key")
+		if err := expectError(func() bool {
+			return C.CryptAcquireCertificatePrivateKey(signerCert.pCert, 0, nil, &hCryptProv, &dwKeySpec, nil) != 0
+		}, "acquiring certificate private key"); err != nil {
+			return nil, err
 		}
 		C.setSignedInfo(signedInfo, C.int(i), C.HCRYPTPROV(hCryptProv), signerCert.pCert, dwKeySpec, (*C.CHAR)(hashOID), cbool(!options.NoCert))
 		res.signerKeys = append(res.signerKeys, hCryptProv)
 	}
-	res.hMsg = C.CryptMsgOpenToEncode(
-		C.MY_ENC_TYPE,              // encoding type
-		flags,                      // flags
-		C.CMSG_SIGNED,              // message type
-		unsafe.Pointer(signedInfo), // pointer to structure
-		nil,                        // inner content OID
-		streamInfo,                 // stream information
-	)
-	if res.hMsg == nil {
-		return nil, errors.Join(getErr("Error opening message for encoding"), res.cleanup())
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		res.hMsg = C.CryptMsgOpenToEncode(
+			C.MY_ENC_TYPE,              // encoding type
+			flags,                      // flags
+			C.CMSG_SIGNED,              // message type
+			unsafe.Pointer(signedInfo), // pointer to structure
+			nil,                        // inner content OID
+			streamInfo,                 // stream information
+		)
+		return res.hMsg != nil
+	}, "opening message for encoding")
 }
 
 // Write encodes provided bytes into message output data stream
 func (msg *Msg) Write(buf []byte) (int, error) {
-	if ok := msg.update(buf, len(buf), msg.lastError != nil); !ok {
-		return 0, getErr("Error updating message body while writing")
+	if err := expectError(func() bool {
+		return msg.update(buf, len(buf), msg.lastError != nil)
+	}, "updating message body while writing"); err != nil {
+		return 0, err
 	}
 	return len(buf), msg.lastError
 }
 
 func (msg *Msg) cleanup() error {
 	var res error
-	for _, hProv := range msg.signerKeys {
-		if C.CryptReleaseContext(hProv, 0) == 0 {
-			res = errors.Join(res, getErr("Error releasing signer key context"))
+	for i, hProv := range msg.signerKeys {
+		if err := expectErrorf(func() bool {
+			return C.CryptReleaseContext(hProv, 0) != 0
+		}, "releasing %d-th signer key context", i); err != nil {
+			res = errors.Join(res, err)
 		}
 	}
-	if msg.hMsg != nil && C.CryptMsgClose(msg.hMsg) == 0 {
-		res = errors.Join(res, getErr("Error closing message"))
+	if err := expectError(func() bool {
+		return msg.hMsg == nil || C.CryptMsgClose(msg.hMsg) != 0
+	}, "closing message"); err != nil {
+		res = errors.Join(res, err)
 	}
 	unregisterCallback(msg.callbackID)
 	return res

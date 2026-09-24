@@ -27,6 +27,7 @@ import "C"
 
 import (
 	"encoding/asn1"
+	"errors"
 	"io"
 	"unsafe"
 )
@@ -57,8 +58,10 @@ type Msg struct {
 }
 
 func (msg *Msg) flush() error {
-	if msg.w != nil && !msg.finalized && !msg.update([]byte{0}, 0, true) {
-		return getErr("Error flushing message")
+	if msg.w != nil && !msg.finalized {
+		return expectError(func() bool {
+			return msg.update([]byte{0}, 0, true)
+		}, "Error flushing message")
 	}
 	return nil
 }
@@ -69,27 +72,28 @@ func (msg *Msg) CertStore() (res CertStore, err error) {
 	if err = msg.flush(); err != nil {
 		return
 	}
-	if res.hStore = C.openStoreMsg(msg.hMsg); res.hStore == nil {
-		err = getErr("Error opening message cert store")
-		return
-	}
+	err = expectError(func() bool {
+		res.hStore = C.openStoreMsg(msg.hMsg)
+		return res.hStore != nil
+	}, "opening message cert store")
 	return
 }
 
 // Verify verifies message signature against signer certificate
 func (msg *Msg) Verify(c Cert) error {
-	if C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) == 0 {
-		return getErr("Error verifying message signature")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CryptMsgControl(msg.hMsg, 0, C.CMSG_CTRL_VERIFY_SIGNATURE, unsafe.Pointer(c.pCert.pCertInfo)) != 0
+	}, "verifying message signature")
 }
 
 // GetSignerCount returns number of signer infos in message
 func (msg *Msg) GetSignerCount() (int, error) {
 	var res C.DWORD
 	var cbData C.DWORD = 4
-	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_COUNT_PARAM, 0, unsafe.Pointer(&res), &cbData) == 0 {
-		return 0, getErr("Error acquiring message signer count")
+	if err := expectError(func() bool {
+		return C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_COUNT_PARAM, 0, unsafe.Pointer(&res), &cbData) != 0
+	}, "acquiring message signer count"); err != nil {
+		return 0, err
 	}
 	return int(res), nil
 }
@@ -98,20 +102,27 @@ func (msg *Msg) GetSignerCount() (int, error) {
 // certificate store (usually acquired by msg.CertStore() method).
 func (msg *Msg) GetSignerCert(i int, store CertStore) (Cert, error) {
 	var cbData C.DWORD
-	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), nil, &cbData) == 0 {
-		return Cert{}, getErrf("Error acquiring message %d-th signer info length", i)
+	if err := expectErrorf(func() bool {
+		return C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), nil, &cbData) != 0
+	}, "acquiring message %d-th signer info length", i); err != nil {
+		return Cert{}, err
 	}
 	signerInfo := C.malloc(C.size_t(cbData))
 	defer C.free(signerInfo)
-	if C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), signerInfo, &cbData) == 0 {
-		return Cert{}, getErrf("Error acquiring message %d-th signer info", i)
+	if err := expectErrorf(func() bool {
+		return C.CryptMsgGetParam(msg.hMsg, C.CMSG_SIGNER_CERT_INFO_PARAM, C.DWORD(i), signerInfo, &cbData) != 0
+	}, "acquiring message %d-th signer info", i); err != nil {
+		return Cert{}, err
 	}
-
-	if pCert := C.CertGetSubjectCertificateFromStore(store.hStore, C.MY_ENC_TYPE, C.PCERT_INFO(signerInfo)); pCert != nil {
-		return Cert{pCert: pCert}, nil
+	var res Cert
+	err := expectErrorf(func() bool {
+		res.pCert = C.CertGetSubjectCertificateFromStore(store.hStore, C.MY_ENC_TYPE, C.PCERT_INFO(signerInfo))
+		return res.pCert != nil
+	}, "getting %d-th signer certificate from store", i)
+	if internalError, ok := errors.AsType[Error](err); ok && internalError.Code == ErrCryptNotFound {
+		return res, nil
+	} else if err != nil {
+		return res, err
 	}
-	if ErrorCode(C.GetLastError()) != ErrCryptNotFound {
-		return Cert{}, getErr("Error getting certificate from store")
-	}
-	return Cert{}, nil
+	return res, nil
 }

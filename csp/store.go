@@ -41,11 +41,10 @@ type CertStore struct {
 
 // MemoryStore returns handle to new empty in-memory certificate store
 func MemoryStore() (res CertStore, err error) {
-	res.hStore = C.openStoreMem()
-	if res.hStore == C.HCERTSTORE(nil) {
-		err = getErr("Error creating memory cert store")
-		return
-	}
+	err = expectError(func() bool {
+		res.hStore = C.openStoreMem()
+		return res.hStore != nil
+	}, "creating memory cert store")
 	return
 }
 
@@ -54,33 +53,30 @@ func MemoryStore() (res CertStore, err error) {
 func SystemStore(name string) (CertStore, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-
-	hStore := C.openStoreSystem(C.HCRYPTPROV(0), (*C.CHAR)(cName))
-	if hStore == C.HCERTSTORE(nil) {
-		return CertStore{}, getErr("Error getting system cert store")
-	}
-	return CertStore{hStore: hStore}, nil
+	var res CertStore
+	err := expectError(func() bool {
+		res.hStore = C.openStoreSystem(C.HCRYPTPROV(0), (*C.CHAR)(cName))
+		return res.hStore != nil
+	}, "getting system cert store")
+	return res, err
 }
 
 // CertStore method returns handle to certificate store in certain CSP context
 func (c Ctx) CertStore(name string) (res CertStore, err error) {
 	cName := charPtr(name)
 	defer freePtr(cName)
-
-	res.hStore = C.openStoreSystem(c.hProv, cName)
-	if res.hStore == nil {
-		err = getErr("Error getting system cert store")
-		return
-	}
+	err = expectErrorf(func() bool {
+		res.hStore = C.openStoreSystem(c.hProv, cName)
+		return res.hStore != nil
+	}, "getting system cert store %q", name)
 	return
 }
 
 // Close releases cert store handle
 func (s CertStore) Close() error {
-	if C.CertCloseStore(s.hStore, C.CERT_CLOSE_STORE_CHECK_FLAG) == 0 {
-		return getErr("Error closing cert store")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CertCloseStore(s.hStore, C.CERT_CLOSE_STORE_CHECK_FLAG) != 0
+	}, "closing cert store")
 }
 
 // findCerts returns slice of *Cert's in store that satisfy findType and findPara
@@ -147,7 +143,7 @@ func (s CertStore) GetByID(issuerName []byte, serialNumber *big.Int) (res Cert, 
 	issuerNameC := C.CBytes(issuerName)
 	sn.Issuer.pbData = (*C.BYTE)(issuerNameC)
 	defer C.free(issuerNameC)
-	sn.Issuer.cbData = (C.DWORD)(len(issuerName))
+	sn.Issuer.cbData = C.DWORD(len(issuerName))
 	snBytes := serialNumber.Bytes()
 	for i, j := 0, len(snBytes)-1; i < j; i, j = i+1, j-1 {
 		snBytes[i], snBytes[j] = snBytes[j], snBytes[i]
@@ -156,10 +152,11 @@ func (s CertStore) GetByID(issuerName []byte, serialNumber *big.Int) (res Cert, 
 	sn.SerialNumber.pbData = (*C.BYTE)(snBytesC)
 	defer C.free(snBytesC)
 	sn.SerialNumber.cbData = C.DWORD(len(snBytes))
-	if res.pCert = s.getCert(C.CERT_FIND_CERT_ID, unsafe.Pointer(&certID)); res.pCert == nil {
-		return res, getErr("Error looking up certificate by ID")
-	}
-	return res, nil
+	err = expectError(func() bool {
+		res.pCert = s.getCert(C.CERT_FIND_CERT_ID, unsafe.Pointer(&certID))
+		return res.pCert != nil
+	}, "looking up certificate by ID")
+	return res, err
 }
 
 // GetByThumb returns first certificate in store that match given thumbprint
@@ -173,11 +170,11 @@ func (s CertStore) GetByThumb(thumb string) (res Cert, err error) {
 	bThumbPtr := C.CBytes(bThumb)
 	defer C.free(bThumbPtr)
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
-	if res.pCert = s.getCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob)); res.pCert == nil {
-		err = getErr("Error looking up certificate by thumb")
-		return
-	}
-	return
+	err = expectError(func() bool {
+		res.pCert = s.getCert(C.CERT_FIND_HASH, unsafe.Pointer(&hashBlob))
+		return res.pCert != nil
+	}, "looking up certificate by thumb")
+	return res, err
 }
 
 // GetBySubjectId returns first certificate in store that match given subject key ID
@@ -191,11 +188,11 @@ func (s CertStore) GetBySubjectId(keyId string) (res Cert, err error) {
 	bThumbPtr := C.CBytes(bThumb)
 	defer C.free(bThumbPtr)
 	hashBlob.pbData = (*C.BYTE)(bThumbPtr)
-	if res.pCert = s.getCert(C.CERT_FIND_KEY_IDENTIFIER, unsafe.Pointer(&hashBlob)); res.pCert == nil {
-		err = getErr("Error looking up certificate by subject key id")
-		return
-	}
-	return
+	err = expectError(func() bool {
+		res.pCert = s.getCert(C.CERT_FIND_KEY_IDENTIFIER, unsafe.Pointer(&hashBlob))
+		return res.pCert != nil
+	}, "looking up certificate by subject key id")
+	return res, err
 }
 
 // GetBySubject returns first certificate with a subject that matches
@@ -203,21 +200,19 @@ func (s CertStore) GetBySubjectId(keyId string) (res Cert, err error) {
 func (s CertStore) GetBySubject(subject string) (res Cert, err error) {
 	cSubject := unsafe.Pointer(C.CString(subject))
 	defer C.free(cSubject)
-
-	if res.pCert = s.getCert(C.CERT_FIND_SUBJECT_STR_A, cSubject); res.pCert == nil {
-		err = getErr("Error looking up certificate by subject string")
-		return
-	}
-	return
+	err = expectError(func() bool {
+		res.pCert = s.getCert(C.CERT_FIND_SUBJECT_STR_A, cSubject)
+		return res.pCert != nil
+	}, "looking up certificate by subject string")
+	return res, err
 }
 
 // Add inserts certificate into store replacing existing certificate link if
 // it's already added
 func (s CertStore) Add(cert Cert) error {
-	if C.CertAddCertificateContextToStore(s.hStore, cert.pCert, C.CERT_STORE_ADD_REPLACE_EXISTING, nil) == 0 {
-		return getErr("Couldn't add certificate to store")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CertAddCertificateContextToStore(s.hStore, cert.pCert, C.CERT_STORE_ADD_REPLACE_EXISTING, nil) != 0
+	}, "adding certificate to store")
 }
 
 func (s CertStore) Certs() (res []Cert) {

@@ -8,7 +8,7 @@ extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
 import "C"
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"unsafe"
 )
@@ -20,48 +20,54 @@ func OpenToDecode(dest io.Writer) (msg *Msg, rErr error) {
 	res.callbackID = registerCallback(res.onWrite)
 	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
 	defer C.free(unsafe.Pointer(si))
-	res.hMsg = C.CryptMsgOpenToDecode(
-		C.MY_ENC_TYPE, // encoding type
-		0,             // flags
-		0,             // message type (get from message)
-		0,             // default cryptographic provider
-		nil,           // recipient information
-		si,            // stream info
-	)
-	if res.hMsg == nil {
-		unregisterCallback(res.callbackID)
-		return nil, getErr("Error opening message for decoding")
-	}
-	res.w = dest
-	return res, nil
+	return res, expectError(func() bool {
+		res.hMsg = C.CryptMsgOpenToDecode(
+			C.MY_ENC_TYPE, // encoding type
+			0,             // flags
+			0,             // message type (get from message)
+			0,             // default cryptographic provider
+			nil,           // recipient information
+			si,            // stream info
+		)
+		if res.hMsg == nil {
+			unregisterCallback(res.callbackID)
+			return false
+		}
+		res.w = dest
+		return true
+	}, "Error opening message for decoding")
 }
 
 // OpenToVerify creates new Msg in decode mode. If detachedSig parameter is specified,
 // it must contain detached P7S signature
 func OpenToVerify(detachedSig ...[]byte) (msg *Msg, rErr error) {
 	res := &Msg{}
-	res.hMsg = C.CryptMsgOpenToDecode(
-		C.MY_ENC_TYPE,        // encoding type
-		C.CMSG_DETACHED_FLAG, // flags
-		0,                    // message type (get from message)
-		0,                    // default cryptographic provider
-		nil,                  // recipient information
-		nil,                  // stream info
-	)
-	if res.hMsg == nil {
-		return nil, getErr("Error opening message for decoding")
+	if err := expectError(func() bool {
+		res.hMsg = C.CryptMsgOpenToDecode(
+			C.MY_ENC_TYPE,        // encoding type
+			C.CMSG_DETACHED_FLAG, // flags
+			0,                    // message type (get from message)
+			0,                    // default cryptographic provider
+			nil,                  // recipient information
+			nil,                  // stream info
+		)
+		return res.hMsg != nil
+	}, "Error opening message for decoding"); err != nil {
+		return nil, err
 	}
 	defer func() {
 		if rErr == nil {
 			return
 		}
-		if C.CryptMsgClose(res.hMsg) == 0 {
-			rErr = fmt.Errorf("%v (original error: %v)", getErr("Error closing message"), rErr)
-		}
+		rErr = errors.Join(rErr, expectError(func() bool {
+			return C.CryptMsgClose(res.hMsg) != 0
+		}, "Error closing message"))
 	}()
 	for i, p := range detachedSig {
-		if !res.update(p, len(p), i == len(detachedSig)-1) {
-			return res, getErr("Error updating message header")
+		if err := expectError(func() bool {
+			return res.update(p, len(p), i == len(detachedSig)-1)
+		}, "Error updating message header"); err != nil {
+			return res, err
 		}
 	}
 	return res, nil

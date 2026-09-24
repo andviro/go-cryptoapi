@@ -80,16 +80,15 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 		C.setRecipientInfo(envelopedInfo, C.int(i), receiverCert.pCert)
 	}
 	res.w = dest
-	res.hMsg = C.CryptMsgOpenToEncode(
-		C.MY_ENC_TYPE,                     // encoding type
-		C.CMSG_CRYPT_RELEASE_CONTEXT_FLAG, // flags
-		C.CMSG_ENVELOPED,                  // message type
-		unsafe.Pointer(envelopedInfo),     // pointer to structure
-		nil,                               // inner content OID
-		si,                                // stream information
-	)
-	if res.hMsg == nil {
-		return nil, getErr("Error opening message for encrypt")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		res.hMsg = C.CryptMsgOpenToEncode(
+			C.MY_ENC_TYPE,                     // encoding type
+			C.CMSG_CRYPT_RELEASE_CONTEXT_FLAG, // flags
+			C.CMSG_ENVELOPED,                  // message type
+			unsafe.Pointer(envelopedInfo),     // pointer to structure
+			nil,                               // inner content OID
+			si,                                // stream information
+		)
+		return res.hMsg != nil
+	}, "Error opening message for encrypt")
 }

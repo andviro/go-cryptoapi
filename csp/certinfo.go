@@ -39,8 +39,10 @@ func nameToStr(src C.PCERT_NAME_BLOB) (string, error) {
 	slen := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, nil, 0)
 	data := make([]byte, slen)
 	cStrPtr := (*C.CHAR)(unsafe.Pointer(&data[0]))
-	if n := C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, cStrPtr, slen); n == 0 {
-		return "", getErr("Error converting RDN to string")
+	if err := expectError(func() bool {
+		return C.CertNameToStr(C.X509_ASN_ENCODING, src, C.CERT_X500_NAME_STR, cStrPtr, slen) != 0
+	}, "converting RDN to string"); err != nil {
+		return "", err
 	}
 	return C.GoString((*C.char)(cStrPtr)), nil
 }

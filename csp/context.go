@@ -59,14 +59,12 @@ type CryptoProvider struct {
 // available CSPs.
 func EnumProviders() (res []CryptoProvider, err error) {
 	var slen, provType, index C.DWORD
-
 	res = make([]CryptoProvider, 0)
-
 	for index = 0; C.CryptEnumProviders(index, nil, 0, &provType, nil, &slen) != 0; index++ {
 		buf := make([]byte, slen)
-		// XXX: Some evil magic here
-		if C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(unsafe.Pointer(&buf[0])), &slen) == 0 {
-			err = getErr("Error during provider enumeration")
+		if err = expectError(func() bool {
+			return C.CryptEnumProviders(index, nil, 0, &provType, (*C.CHAR)(unsafe.Pointer(&buf[0])), &slen) != 0
+		}, "enumerating providers"); err != nil {
 			return
 		}
 		res = append(res, CryptoProvider{Name: string(buf), Type: ProvType(provType)})
@@ -83,12 +81,10 @@ func AcquireCtx(container, provider string, provType ProvType, flags CryptFlag) 
 	defer freePtr(cContainer)
 	cProvider := charPtr(provider)
 	defer freePtr(cProvider)
-
-	if C.CryptAcquireContext(&res.hProv, cContainer, cProvider, C.DWORD(provType), C.DWORD(flags)) == 0 {
-		err = getErr("Error acquiring context")
-		return
-	}
-	return
+	err = expectError(func() bool {
+		return C.CryptAcquireContext(&res.hProv, cContainer, cProvider, C.DWORD(provType), C.DWORD(flags)) != 0
+	}, "acquiring context")
+	return res, err
 }
 
 // DeleteCtx deletes key container from CSP.
@@ -99,10 +95,9 @@ func DeleteCtx(container, provider string, provType ProvType) error {
 
 // Close releases CSP context
 func (ctx Ctx) Close() error {
-	if C.CryptReleaseContext(ctx.hProv, 0) == 0 {
-		return getErr("Error releasing context")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CryptReleaseContext(ctx.hProv, 0) != 0
+	}, "releasing context")
 }
 
 // SetPassword changes PIN on key container acquired with AcquireCtx to pwd. Which
@@ -117,18 +112,16 @@ func (ctx Ctx) SetPassword(pwd string, at KeyPairID) error {
 	} else {
 		pParam = C.PP_KEYEXCHANGE_PIN
 	}
-	if C.CryptSetProvParam(ctx.hProv, pParam, (*C.BYTE)(pin), 0) == 0 {
-		return getErr("Error setting container password")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CryptSetProvParam(ctx.hProv, pParam, (*C.BYTE)(pin), 0) != 0
+	}, "setting container password")
 }
 
 // SetDHOID changes D-H OID on key container to specified OID (typically, result of Key.GetDHOID method)
 func (ctx Ctx) SetDHOID(oid string) error {
 	ptr := unsafe.Pointer(C.CString(oid))
 	defer C.free(ptr)
-	if C.CryptSetProvParam(ctx.hProv, C.PP_DHOID, (*C.BYTE)(ptr), 0) == 0 {
-		return getErr("Error setting context DH OID")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CryptSetProvParam(ctx.hProv, C.PP_DHOID, (*C.BYTE)(ptr), 0) != 0
+	}, "setting context DH OID")
 }

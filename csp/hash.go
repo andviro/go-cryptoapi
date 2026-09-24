@@ -63,21 +63,26 @@ func NewHash(options HashOptions) (*Hash, error) {
 		}
 		res.hProv = ctx.hProv
 		res.mustReleaseCtx = C.TRUE
-	} else if C.CryptAcquireCertificatePrivateKey(options.SignCert.pCert, 0, nil, &res.hProv, &res.dwKeySpec, &res.mustReleaseCtx) == 0 {
-		return nil, getErr("Error acquiring certificate private key")
+	} else if err := expectError(func() bool {
+		return C.CryptAcquireCertificatePrivateKey(options.SignCert.pCert, 0, nil, &res.hProv, &res.dwKeySpec, &res.mustReleaseCtx) != 0
+	}, "acquiring certificate private key"); err != nil {
+		return nil, err
 	}
-	if C.CryptCreateHash(res.hProv, res.algID, res.hKey, 0, &res.hHash) == 0 {
-		return nil, getErr("Error creating hash")
-	}
-	return res, nil
+	return res, expectError(func() bool {
+		return C.CryptCreateHash(res.hProv, res.algID, res.hKey, 0, &res.hHash) != 0
+	}, "creating hash")
 }
 
 func (h *Hash) Close() error {
-	if C.CryptDestroyHash(h.hHash) == 0 {
-		return getErr("Error destroying hash")
+	if err := expectError(func() bool {
+		return C.CryptDestroyHash(h.hHash) != 0
+	}, "destroying hash"); err != nil {
+		return err
 	}
-	if h.mustReleaseCtx != 0 && C.CryptReleaseContext(h.hProv, 0) == 0 {
-		return getErr("Error releasing context")
+	if err := expectError(func() bool {
+		return h.mustReleaseCtx == 0 || C.CryptReleaseContext(h.hProv, 0) != 0
+	}, "releasing context"); err != nil {
+		return err
 	}
 	if h.keyHash != nil {
 		return h.keyHash.Close()
@@ -90,8 +95,10 @@ func write(dest C.HCRYPTHASH, buf []byte) (n int, err error) {
 	if n = len(buf); n > 0 {
 		ptr = unsafe.Pointer(&buf[0])
 	}
-	if C.CryptHashData(dest, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) == 0 {
-		return 0, getErr("Error updating hash")
+	if err := expectError(func() bool {
+		return C.CryptHashData(dest, (*C.BYTE)(ptr), C.DWORD(len(buf)), 0) != 0
+	}, "updating hash"); err != nil {
+		return 0, err
 	}
 	return n, nil
 }
@@ -101,15 +108,19 @@ func (h *Hash) Write(buf []byte) (n int, err error) {
 }
 
 // Sum appends the current hash to b and returns the resulting slice.
-// It does not change the underlying hash state.
+// It does not change the underlying hash state. Panics on any errors.
 func (h *Hash) Sum(b []byte) []byte {
 	var hHash C.HCRYPTHASH
-	if C.CryptDuplicateHash(h.hHash, nil, 0, &hHash) == 0 {
-		panic(getErr("Error duplicating hash"))
+	if err := expectError(func() bool {
+		return C.CryptDuplicateHash(h.hHash, nil, 0, &hHash) != 0
+	}, "duplicating hash"); err != nil {
+		panic(err)
 	}
 	defer func() {
-		if C.CryptDestroyHash(hHash) == 0 {
-			panic(getErr("Error destroying hash"))
+		if err := expectError(func() bool {
+			return C.CryptDestroyHash(hHash) != 0
+		}, "destroying hash"); err != nil {
+			panic(err)
 		}
 	}()
 	if _, err := write(hHash, b); err != nil {
@@ -117,23 +128,31 @@ func (h *Hash) Sum(b []byte) []byte {
 	}
 	var n C.DWORD
 	slen := C.DWORD(C.sizeof_DWORD)
-	if C.CryptGetHashParam(hHash, C.HP_HASHSIZE, (*C.uchar)(unsafe.Pointer(&n)), &slen, 0) == 0 {
-		panic(getErr("Error getting hash size"))
+	if err := expectError(func() bool {
+		return C.CryptGetHashParam(hHash, C.HP_HASHSIZE, (*C.uchar)(unsafe.Pointer(&n)), &slen, 0) != 0
+	}, "getting hash size"); err != nil {
+		panic(err)
 	}
 	res := make([]byte, int(n))
-	if C.CryptGetHashParam(hHash, C.HP_HASHVAL, (*C.BYTE)(&res[0]), &n, 0) == 0 {
-		panic(getErr("Error getting hash value"))
+	if err := expectError(func() bool {
+		return C.CryptGetHashParam(hHash, C.HP_HASHVAL, (*C.BYTE)(&res[0]), &n, 0) != 0
+	}, "getting hash value"); err != nil {
+		panic(err)
 	}
 	return res
 }
 
 // Reset resets the Hash to its initial state.
 func (h *Hash) Reset() {
-	if h.hHash != 0 && C.CryptDestroyHash(h.hHash) == 0 {
-		panic(getErr("Error destroying hash"))
+	if err := expectError(func() bool {
+		return h.hHash == 0 || C.CryptDestroyHash(h.hHash) != 0
+	}, "destroying hash"); err != nil {
+		panic(err)
 	}
-	if C.CryptCreateHash(h.hProv, h.algID, h.hKey, 0, &h.hHash) == 0 {
-		panic(getErr("Error creating hash"))
+	if err := expectError(func() bool {
+		return C.CryptCreateHash(h.hProv, h.algID, h.hKey, 0, &h.hHash) != 0
+	}, "creating hash"); err != nil {
+		panic(err)
 	}
 }
 
@@ -158,15 +177,19 @@ func (h *Hash) BlockSize() int {
 
 func (h *Hash) Sign() ([]byte, error) {
 	var slen C.DWORD
-	if C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, nil, &slen) == 0 {
-		return nil, getErr("Error calculating signature size")
+	if err := expectError(func() bool {
+		return C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, nil, &slen) != 0
+	}, "calculating signature size"); err != nil {
+		return nil, err
 	}
 	if slen == 0 {
 		return nil, nil
 	}
 	res := make([]byte, int(slen))
-	if C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, (*C.BYTE)(&res[0]), &slen) == 0 {
-		return nil, getErr("Error calculating signature value")
+	if err := expectError(func() bool {
+		return C.CryptSignHash(h.hHash, h.dwKeySpec, nil, 0, (*C.BYTE)(&res[0]), &slen) != 0
+	}, "calculating signature value"); err != nil {
+		return nil, err
 	}
 	return res, nil
 }
@@ -174,17 +197,18 @@ func (h *Hash) Sign() ([]byte, error) {
 func (h *Hash) Verify(signer Cert, sig []byte) error {
 	var hPubKey C.HCRYPTKEY
 	// Get the public key from the certificate
-	if C.CryptImportPublicKeyInfo(h.hProv, C.MY_ENC_TYPE, &signer.pCert.pCertInfo.SubjectPublicKeyInfo, &hPubKey) == 0 {
-		return getErr("Error getting certificate public key handle")
+	if err := expectError(func() bool {
+		return C.CryptImportPublicKeyInfo(h.hProv, C.MY_ENC_TYPE, &signer.pCert.pCertInfo.SubjectPublicKeyInfo, &hPubKey) != 0
+	}, "getting certificate public key handle"); err != nil {
+		return err
 	}
 	var ptr unsafe.Pointer
 	if len(sig) > 0 {
 		ptr = unsafe.Pointer(&sig[0])
 	}
-	if C.CryptVerifySignature(h.hHash, (*C.BYTE)(ptr), C.DWORD(len(sig)), hPubKey, nil, 0) == 0 {
-		return getErr("Error verifying hash signature")
-	}
-	return nil
+	return expectError(func() bool {
+		return C.CryptVerifySignature(h.hHash, (*C.BYTE)(ptr), C.DWORD(len(sig)), hPubKey, nil, 0) != 0
+	}, "verifying hash signature")
 }
 
 // NewHMAC creates HMAC object initialized with given byte key
@@ -202,8 +226,10 @@ func NewHMAC(hashAlg asn1.ObjectIdentifier, key []byte) (_ *Hash, rErr error) {
 	if _, err := keyHash.Write(key); err != nil {
 		return nil, err
 	}
-	if C.CryptDeriveKey(keyHash.hProv, C.CALG_G28147, keyHash.hHash, C.CRYPT_EXPORTABLE, &opts.HMACKey.hKey) == 0 {
-		return nil, getErr("Error deriving key")
+	if err := expectError(func() bool {
+		return C.CryptDeriveKey(keyHash.hProv, C.CALG_G28147, keyHash.hHash, C.CRYPT_EXPORTABLE, &opts.HMACKey.hKey) != 0
+	}, "deriving key"); err != nil {
+		return nil, err
 	}
 	res, err := NewHash(opts)
 	if err != nil {
