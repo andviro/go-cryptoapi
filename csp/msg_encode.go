@@ -3,7 +3,7 @@ package csp
 /*
 #include "common.h"
 
-extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
+extern CMSG_STREAM_INFO *mkStreamInfo(int64_t pvArg);
 
 static CMSG_SIGNED_ENCODE_INFO *mkSignedInfo(int cSigners, BOOL includeCert) {
 	int i;
@@ -87,7 +87,7 @@ func OpenToEncode(dest io.Writer, options EncodeOptions) (msg *Msg, rErr error) 
 	}
 	res := &Msg{w: dest}
 	res.callbackID = registerCallback(res.onWrite)
-	streamInfo := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
+	streamInfo := C.mkStreamInfo(C.int64_t(res.callbackID))
 	defer C.free(unsafe.Pointer(streamInfo))
 	signedInfo := C.mkSignedInfo(C.int(len(options.Signers)), cbool(!options.NoCert))
 	defer C.freeSignedInfo(signedInfo)

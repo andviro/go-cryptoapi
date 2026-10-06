@@ -36,8 +36,8 @@ func unregisterCallback(id int64) {
 
 //export msgStreamCallback
 func msgStreamCallback(pvArg unsafe.Pointer, pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
-	idx := (*int64)(pvArg)
+	idx := int64(uintptr(pvArg))
 	mu.RLock()
 	defer mu.RUnlock()
-	return callbacks[*idx](pbData, cbData, fFinal)
+	return callbacks[idx](pbData, cbData, fFinal)
 }

@@ -3,7 +3,7 @@ package csp
 /*
 #include "common.h"
 
-extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
+extern CMSG_STREAM_INFO *mkStreamInfo(int64_t pvArg);
 
 static CMSG_ENVELOPED_ENCODE_INFO *mkEnvelopedInfo(HCRYPTPROV hCryptProv, int cRecipients, LPSTR encryptOID) {
     CRYPT_ALGORITHM_IDENTIFIER EncryptAlgorithm;
@@ -64,7 +64,7 @@ func OpenToEncrypt(dest io.Writer, options EncryptOptions) (*Msg, error) {
 	}
 	res := new(Msg)
 	res.callbackID = registerCallback(res.onWrite)
-	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
+	si := C.mkStreamInfo(C.int64_t(res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 
 	var encryptOID C.LPSTR

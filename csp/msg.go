@@ -13,12 +13,12 @@ extern BOOL WINAPI msgStreamCallback(
     DWORD cbData,
     BOOL fFinal);
 
-CMSG_STREAM_INFO *mkStreamInfo(void *pvArg) {
+CMSG_STREAM_INFO *mkStreamInfo(int64_t pvArg) {
 	CMSG_STREAM_INFO *res = malloc(sizeof(CMSG_STREAM_INFO));
 	memset(res, 0, sizeof(CMSG_STREAM_INFO));
 	res->cbContent = CMSG_INDEFINITE_LENGTH;
 	res->pfnStreamOutput = &msgStreamCallback;
-	res->pvArg = pvArg;
+	res->pvArg = (void *)pvArg;
 	return res;
 }
 

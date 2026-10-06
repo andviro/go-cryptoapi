@@ -3,7 +3,7 @@ package csp
 /*
 #include "common.h"
 
-extern CMSG_STREAM_INFO *mkStreamInfo(void *pvArg);
+extern CMSG_STREAM_INFO *mkStreamInfo(int64_t pvArg);
 */
 import "C"
 
@@ -32,7 +32,7 @@ func OpenToDecrypt(dest io.Writer, store CertStore, maxHeaderSize int) (msg *Dec
 	res.store = store
 	res.w = dest
 	res.callbackID = registerCallback(res.onWrite)
-	si := C.mkStreamInfo(unsafe.Pointer(&res.callbackID))
+	si := C.mkStreamInfo(C.int64_t(res.callbackID))
 	defer C.free(unsafe.Pointer(si))
 	if err := expectError(func() bool {
 		res.hMsg = C.CryptMsgOpenToDecode(
