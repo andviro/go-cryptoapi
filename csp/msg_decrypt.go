@@ -45,6 +45,7 @@ func OpenToDecrypt(dest io.Writer, store CertStore, maxHeaderSize int) (msg *Dec
 		)
 		return res.hMsg != nil
 	}, "opening message for decrypting"); err != nil {
+		unregisterCallback(res.callbackID)
 		return nil, err
 	}
 	return res, nil
@@ -132,6 +133,18 @@ func (msg *Decryptor) getRecipientCert(i int, store CertStore) (*Cert, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// Close releases the internal message handle and removes the stream callback.
+func (msg *Decryptor) Close() error {
+	var res error
+	if err := expectError(func() bool {
+		return msg.hMsg == nil || C.CryptMsgClose(msg.hMsg) != 0
+	}, "closing message"); err != nil {
+		res = errors.Join(res, err)
+	}
+	unregisterCallback(msg.callbackID)
+	return res
 }
 
 func (msg *Decryptor) onWrite(pbData *C.BYTE, cbData C.DWORD, fFinal bool) bool {
